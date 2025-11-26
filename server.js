@@ -1,11 +1,28 @@
 const express = require('express');
 const http = require('http');
+const https = require('https');
 const socketIo = require('socket.io');
 const fs = require('fs');
 const path = require('path');
+const fileUpload = require('express-fileupload');
 
 const app = express();
-const server = http.createServer(app);
+
+// Check if SSL certificates exist
+let server;
+const PORT = 3001;
+const HTTPS_PORT = 3443;
+
+try {
+  const key = fs.readFileSync('key.pem');
+  const cert = fs.readFileSync('cert.pem');
+  server = https.createServer({ key, cert }, app);
+  console.log('Using HTTPS');
+} catch (err) {
+  server = http.createServer(app);
+  console.log('Using HTTP (SSL certificates not found)');
+}
+
 const io = socketIo(server);
 
 const PORT = 3001;
@@ -40,7 +57,26 @@ function cleanExpiredMessages() {
 let messages = cleanExpiredMessages();
 let onlineUsers = {};
 
+app.use(fileUpload());
 app.use(express.static('public'));
+
+// File upload route
+app.post('/upload', (req, res) => {
+  if (!req.files || Object.keys(req.files).length === 0) {
+    return res.status(400).send('No files were uploaded.');
+  }
+
+  const file = req.files.file;
+  const fileName = Date.now() + '_' + file.name;
+  const filePath = path.join(__dirname, 'public', 'files', fileName);
+
+  file.mv(filePath, (err) => {
+    if (err) {
+      return res.status(500).send(err);
+    }
+    res.json({ fileName: file.name, filePath: `/files/${fileName}`, fileSize: file.size });
+  });
+});
 
 io.on('connection', (socket) => {
   console.log('A user connected');
@@ -66,6 +102,21 @@ io.on('connection', (socket) => {
     io.emit('chat message', message);
   });
 
+  socket.on('file message', (fileData) => {
+    const message = {
+      id: Date.now(),
+      nickname: onlineUsers[socket.id] || 'Anonymous',
+      type: 'file',
+      fileName: fileData.fileName,
+      filePath: fileData.filePath,
+      fileSize: fileData.fileSize,
+      timestamp: Date.now()
+    };
+    messages.push(message);
+    saveMessages(messages);
+    io.emit('file message', message);
+  });
+
   socket.on('disconnect', () => {
     console.log('A user disconnected');
     delete onlineUsers[socket.id];
@@ -76,6 +127,12 @@ io.on('connection', (socket) => {
 // Clean expired messages every hour
 setInterval(cleanExpiredMessages, 60 * 60 * 1000);
 
-server.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
+const currentPort = server instanceof https.Server ? HTTPS_PORT : PORT;
+const protocol = server instanceof https.Server ? 'https' : 'http';
+
+server.listen(currentPort, () => {
+  console.log(`Server running on ${protocol}://localhost:${currentPort}`);
+  if (server instanceof http.Server) {
+    console.log('To enable HTTPS, generate SSL certificates (key.pem and cert.pem)');
+  }
 });

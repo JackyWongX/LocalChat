@@ -35,6 +35,10 @@
       <!-- Chat Area -->
       <div class="flex-1 bg-white bg-opacity-20 rounded-lg p-4 backdrop-blur-sm">
         <div id="messages" class="h-[900px] overflow-y-auto mb-4 p-2"></div>
+        <div id="fileDropArea" class="border-2 border-dashed border-gray-400 rounded-lg p-4 mb-4 text-center text-gray-600 cursor-pointer hover:border-blue-500 transition duration-200">
+          拖拽文件到此处或点击选择文件
+          <input type="file" id="fileInput" class="hidden" multiple>
+        </div>
         <div class="flex">
           <input type="text" id="messageInput" class="flex-1 px-4 py-2 rounded-l-lg border-0 focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="输入消息...">
           <button id="sendButton" class="bg-blue-500 hover:bg-blue-600 text-white px-6 py-2 rounded-r-lg transition duration-200">发送</button>
