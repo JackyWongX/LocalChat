@@ -9,17 +9,51 @@ const onlineUsersUl = document.getElementById('onlineUsers');
 
 let currentNickname = '';
 
-// Set nickname
+function generateRandomNickname() {
+  const adjectives = ['快乐的', '聪明的', '勇敢的', '温柔的', '活泼的', '神秘的', '阳光的', '文艺的'];
+  const nouns = ['小猫', '小狗', '小兔', '小熊', '小鸟', '小鱼', '小鹿', '小猴'];
+  const adj = adjectives[Math.floor(Math.random() * adjectives.length)];
+  const noun = nouns[Math.floor(Math.random() * nouns.length)];
+  const num = Math.floor(Math.random() * 1000);
+  return `${adj}${noun}${num}`;
+}
+
+// Initialize nickname
+function initializeNickname() {
+  let storedNickname = localStorage.getItem('chatNickname');
+  if (!storedNickname) {
+    storedNickname = generateRandomNickname();
+    localStorage.setItem('chatNickname', storedNickname);
+  }
+  currentNickname = storedNickname;
+  nicknameInput.value = currentNickname;
+  nicknameInput.disabled = true;
+  setNicknameButton.textContent = '修改昵称';
+  socket.emit('set nickname', currentNickname);
+}
+
+// Modify nickname
 setNicknameButton.addEventListener('click', () => {
-  const nickname = nicknameInput.value.trim();
-  if (nickname) {
-    currentNickname = nickname;
-    socket.emit('set nickname', nickname);
+  if (nicknameInput.disabled) {
+    // Enable editing
+    nicknameInput.disabled = false;
+    setNicknameButton.textContent = '保存';
+    nicknameInput.focus();
+  } else {
+    // Save new nickname
+    const newNickname = nicknameInput.value.trim();
+    if (newNickname && newNickname !== currentNickname) {
+      currentNickname = newNickname;
+      localStorage.setItem('chatNickname', currentNickname);
+      socket.emit('set nickname', currentNickname);
+    }
     nicknameInput.disabled = true;
-    setNicknameButton.disabled = true;
-    setNicknameButton.textContent = '已设置';
+    setNicknameButton.textContent = '修改昵称';
   }
 });
+
+// Initialize on page load
+document.addEventListener('DOMContentLoaded', initializeNickname);
 
 // Send message
 sendButton.addEventListener('click', sendMessage);
@@ -48,10 +82,10 @@ function displayMessage(msg) {
   const isOwnMessage = msg.nickname === currentNickname;
   const messageContainer = document.createElement('div');
   messageContainer.className = `message flex mb-2 ${isOwnMessage ? 'justify-end' : 'justify-start'}`;
-  
+
   const messageDiv = document.createElement('div');
   messageDiv.className = `rounded-lg p-3 max-w-xs lg:max-w-md ${isOwnMessage ? 'bg-blue-500 text-white' : 'bg-white bg-opacity-30 text-gray-700'}`;
-  
+
   const timestamp = new Date(msg.timestamp).toLocaleString('zh-CN');
   if (isOwnMessage) {
     messageDiv.innerHTML = `
@@ -65,7 +99,7 @@ function displayMessage(msg) {
       <span class="text-xs text-gray-600">${timestamp}</span>
     `;
   }
-  
+
   messageContainer.appendChild(messageDiv);
   messagesDiv.appendChild(messageContainer);
   messagesDiv.scrollTop = messagesDiv.scrollHeight;
