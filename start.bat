@@ -26,7 +26,7 @@ echo 启动聊天室服务器...
 echo 服务器将在端口3001启动
 echo 在浏览器中访问: http://localhost:3001
 echo.
-echo 按Ctrl+C停止服务器
+echo 服务器将在新窗口中启动，按任意键关闭此窗口...
 echo.
 
-npm start
+start cmd /k "npm start"

@@ -25,7 +25,6 @@ try {
 
 const io = socketIo(server);
 
-const PORT = 3001;
 const MESSAGES_FILE = path.join(__dirname, 'messages.json');
 const EXPIRY_DAYS = 7;
 
