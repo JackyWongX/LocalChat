@@ -45,17 +45,29 @@ socket.on('load messages', (messages) => {
 });
 
 function displayMessage(msg) {
+  const isOwnMessage = msg.nickname === currentNickname;
+  const messageContainer = document.createElement('div');
+  messageContainer.className = `message flex mb-2 ${isOwnMessage ? 'justify-end' : 'justify-start'}`;
+  
   const messageDiv = document.createElement('div');
-  messageDiv.className = 'message bg-white bg-opacity-30 rounded-lg p-3 mb-2';
+  messageDiv.className = `rounded-lg p-3 max-w-xs lg:max-w-md ${isOwnMessage ? 'bg-blue-500 text-white' : 'bg-white bg-opacity-30 text-gray-700'}`;
+  
   const timestamp = new Date(msg.timestamp).toLocaleString('zh-CN');
-  messageDiv.innerHTML = `
-    <div class="flex justify-between items-center mb-1">
-      <span class="font-bold text-gray-800">${msg.nickname}</span>
+  if (isOwnMessage) {
+    messageDiv.innerHTML = `
+      <p class="mb-1">${msg.message}</p>
+      <span class="text-xs opacity-75">${timestamp}</span>
+    `;
+  } else {
+    messageDiv.innerHTML = `
+      <div class="font-bold text-gray-800 mb-1">${msg.nickname}</div>
+      <p class="mb-1">${msg.message}</p>
       <span class="text-xs text-gray-600">${timestamp}</span>
-    </div>
-    <p class="text-gray-700">${msg.message}</p>
-  `;
-  messagesDiv.appendChild(messageDiv);
+    `;
+  }
+  
+  messageContainer.appendChild(messageDiv);
+  messagesDiv.appendChild(messageContainer);
   messagesDiv.scrollTop = messagesDiv.scrollHeight;
 }
 
