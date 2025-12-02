@@ -7,6 +7,9 @@ const nicknameInput = document.getElementById('nicknameInput');
 const setNicknameButton = document.getElementById('setNicknameButton');
 const onlineUsersUl = document.getElementById('onlineUsers');
 const dragOverlay = document.getElementById('dragOverlay');
+const imageModal = document.getElementById('imageModal');
+const modalImage = document.getElementById('modalImage');
+const closeModal = document.getElementById('closeModal');
 
 let currentNickname = '';
 const uploadPlaceholders = new Map();
@@ -59,6 +62,44 @@ messageInput.addEventListener('keydown', (e) => {
     sendMessage();
   }
 });
+
+messageInput.addEventListener('paste', handlePaste);
+
+function handlePaste(e) {
+  const items = e.clipboardData.items;
+  for (let i = 0; i < items.length; i++) {
+    if (items[i].type.indexOf('image') !== -1) {
+      e.preventDefault();
+      const file = items[i].getAsFile();
+      uploadImage(file);
+      return;
+    }
+  }
+}
+
+function uploadImage(file) {
+  // Create a blob with a filename
+  const imageFile = new File([file], `pasted-image-${Date.now()}.png`, { type: file.type });
+
+  const formData = new FormData();
+  formData.append('file', imageFile);
+
+  const xhr = new XMLHttpRequest();
+  xhr.open('POST', '/upload');
+
+  xhr.onload = () => {
+    if (xhr.status >= 200 && xhr.status < 300) {
+      try {
+        const data = JSON.parse(xhr.responseText);
+        socket.emit('image message', { ...data });
+      } catch (error) {
+        console.error('Upload failed:', error);
+      }
+    }
+  };
+
+  xhr.send(formData);
+}
 
 function sendMessage() {
   const message = messageInput.value;
@@ -142,10 +183,16 @@ socket.on('file message', (msg) => {
   displayFileMessage(msg);
 });
 
+socket.on('image message', (msg) => {
+  displayImageMessage(msg);
+});
+
 socket.on('load messages', (messages) => {
   messages.forEach(msg => {
     if (msg.type === 'file') {
       displayFileMessage(msg);
+    } else if (msg.type === 'image') {
+      displayImageMessage(msg);
     } else {
       displayMessage(msg);
     }
@@ -244,6 +291,51 @@ function appendMessageContent(wrapper, text) {
   wrapper.appendChild(paragraph);
 }
 
+function displayImageMessage(msg) {
+  const element = createImageMessageElement(msg);
+  messagesDiv.appendChild(element);
+  scrollMessagesToBottom();
+}
+
+function createImageMessageElement(msg) {
+  const isOwnMessage = msg.nickname === currentNickname;
+  const container = document.createElement('div');
+  container.className = `message flex mb-2 ${isOwnMessage ? 'justify-end' : 'justify-start'}`;
+
+  const messageDiv = document.createElement('div');
+  messageDiv.className = 'rounded-lg p-3 max-w-xs lg:max-w-md bg-white bg-opacity-30 text-gray-700';
+
+  // 第一行：昵称 + 时间，字体小
+  const headerDiv = document.createElement('div');
+  headerDiv.className = 'text-xs opacity-75 mb-1 flex items-center justify-between px-2';
+
+  const nicknameSpan = document.createElement('span');
+  nicknameSpan.className = 'font-semibold';
+  nicknameSpan.textContent = isOwnMessage ? '我' : msg.nickname;
+  headerDiv.appendChild(nicknameSpan);
+
+  const separator = document.createElement('span');
+  separator.className = 'mx-2';
+  separator.textContent = '·';
+  headerDiv.appendChild(separator);
+
+  const timestampSpan = document.createElement('span');
+  timestampSpan.textContent = formatTimestamp(msg.timestamp);
+  headerDiv.appendChild(timestampSpan);
+
+  messageDiv.appendChild(headerDiv);
+
+  // 图片
+  const img = document.createElement('img');
+  img.src = msg.filePath;
+  img.className = 'max-w-full h-auto rounded cursor-pointer mt-1';
+  img.onclick = () => openImageModal(msg.filePath);
+  messageDiv.appendChild(img);
+
+  container.appendChild(messageDiv);
+  return container;
+}
+
 function parseCodeBlock(content) {
   if (!content) return null;
   const trimmed = content.trim();
@@ -282,20 +374,36 @@ function createFileMessageElement(msg) {
   const wrapper = document.createElement('div');
   wrapper.className = 'rounded-xl p-4 max-w-xs lg:max-w-md bg-white bg-opacity-30 text-gray-700';
 
-  if (!isOwnMessage) {
-    const nameDiv = document.createElement('div');
-    nameDiv.className = 'font-bold text-sm text-gray-600 mb-2';
-    nameDiv.textContent = msg.nickname;
-    wrapper.appendChild(nameDiv);
-  }
+  // 第一行：昵称 + 时间，字体小
+  const headerDiv = document.createElement('div');
+  headerDiv.className = 'text-xs opacity-75 mb-2 flex items-center justify-between px-2';
+
+  const nicknameSpan = document.createElement('span');
+  nicknameSpan.className = 'font-semibold';
+  nicknameSpan.textContent = isOwnMessage ? '我' : msg.nickname;
+  headerDiv.appendChild(nicknameSpan);
+
+  const separator = document.createElement('span');
+  separator.className = 'mx-2';
+  separator.textContent = '·';
+  headerDiv.appendChild(separator);
+
+  const timestampSpan = document.createElement('span');
+  timestampSpan.textContent = formatTimestamp(msg.timestamp);
+  headerDiv.appendChild(timestampSpan);
+
+  wrapper.appendChild(headerDiv);
 
   const tile = document.createElement('div');
-  tile.className = 'flex items-center space-x-3';
+  tile.className = 'flex items-center justify-between';
+
+  const leftDiv = document.createElement('div');
+  leftDiv.className = 'flex items-center space-x-3 flex-1 min-w-0';
 
   const iconDiv = document.createElement('div');
   iconDiv.className = 'text-2xl';
   iconDiv.textContent = getFileIcon(msg.fileName);
-  tile.appendChild(iconDiv);
+  leftDiv.appendChild(iconDiv);
 
   const metaDiv = document.createElement('div');
   metaDiv.className = 'flex-1 min-w-0';
@@ -310,25 +418,18 @@ function createFileMessageElement(msg) {
   size.textContent = formatFileSize(msg.fileSize);
   metaDiv.appendChild(size);
 
-  tile.appendChild(metaDiv);
-  wrapper.appendChild(tile);
-
-  const footer = document.createElement('div');
-  footer.className = 'mt-3 flex justify-between items-center';
+  leftDiv.appendChild(metaDiv);
+  tile.appendChild(leftDiv);
 
   const link = document.createElement('a');
   link.href = msg.filePath;
   link.download = msg.fileName;
   link.textContent = '下载';
-  link.className = 'text-xs bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded-full transition duration-200';
-  footer.appendChild(link);
+  link.className = 'text-xs bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded-full transition duration-200 ml-2';
+  tile.appendChild(link);
 
-  const time = document.createElement('div');
-  time.className = 'text-xs text-gray-500';
-  time.textContent = formatTimestamp(msg.timestamp);
-  footer.appendChild(time);
+  wrapper.appendChild(tile);
 
-  wrapper.appendChild(footer);
   container.appendChild(wrapper);
 
   return container;
@@ -438,4 +539,23 @@ function handleUploadFailure(payload) {
     placeholder.container.remove();
     uploadPlaceholders.delete(payload.uploadId);
   }, 5000);
+}
+
+// Image modal functionality
+closeModal.addEventListener('click', () => {
+  imageModal.style.opacity = '0';
+  imageModal.style.pointerEvents = 'none';
+});
+
+imageModal.addEventListener('click', (e) => {
+  if (e.target === imageModal) {
+    imageModal.style.opacity = '0';
+    imageModal.style.pointerEvents = 'none';
+  }
+});
+
+function openImageModal(src) {
+  modalImage.src = src;
+  imageModal.style.opacity = '1';
+  imageModal.style.pointerEvents = 'auto';
 }

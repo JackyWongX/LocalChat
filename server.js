@@ -117,6 +117,21 @@ io.on('connection', (socket) => {
     io.emit('file message', message);
   });
 
+  socket.on('image message', (imageData) => {
+    const message = {
+      id: Date.now(),
+      nickname: onlineUsers[socket.id] || 'Anonymous',
+      type: 'image',
+      fileName: imageData.fileName,
+      filePath: imageData.filePath,
+      fileSize: imageData.fileSize,
+      timestamp: Date.now()
+    };
+    messages.push(message);
+    saveMessages(messages);
+    io.emit('image message', message);
+  });
+
   socket.on('file upload started', (uploadInfo = {}) => {
     if (!uploadInfo.uploadId) return;
     const payload = {
