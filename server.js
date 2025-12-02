@@ -109,11 +109,45 @@ io.on('connection', (socket) => {
       fileName: fileData.fileName,
       filePath: fileData.filePath,
       fileSize: fileData.fileSize,
-      timestamp: Date.now()
+      timestamp: Date.now(),
+      uploadId: fileData.uploadId || null
     };
     messages.push(message);
     saveMessages(messages);
     io.emit('file message', message);
+  });
+
+  socket.on('file upload started', (uploadInfo = {}) => {
+    if (!uploadInfo.uploadId) return;
+    const payload = {
+      uploadId: uploadInfo.uploadId,
+      fileName: uploadInfo.fileName || '未命名文件',
+      fileSize: uploadInfo.fileSize || 0,
+      nickname: onlineUsers[socket.id] || 'Anonymous',
+      timestamp: Date.now()
+    };
+    io.emit('file upload started', payload);
+  });
+
+  socket.on('file upload progress', (progressInfo = {}) => {
+    if (!progressInfo.uploadId || typeof progressInfo.percent !== 'number') return;
+    const percent = Math.max(0, Math.min(100, Math.round(progressInfo.percent)));
+    const payload = {
+      uploadId: progressInfo.uploadId,
+      percent,
+      nickname: onlineUsers[socket.id] || 'Anonymous'
+    };
+    io.emit('file upload progress', payload);
+  });
+
+  socket.on('file upload failed', (failInfo = {}) => {
+    if (!failInfo.uploadId) return;
+    const payload = {
+      uploadId: failInfo.uploadId,
+      error: failInfo.error || '上传失败',
+      nickname: onlineUsers[socket.id] || 'Anonymous'
+    };
+    io.emit('file upload failed', payload);
   });
 
   socket.on('disconnect', () => {

@@ -68,32 +68,55 @@
       scrollbar-width: thin;
       scrollbar-color: rgba(59, 130, 246, 0.4) rgba(255, 255, 255, 0.1);
     }
+
+    pre {
+      font-family: 'Fira Code', 'JetBrains Mono', Consolas, monospace;
+    }
+
+    .code-block {
+      background: rgba(15, 23, 42, 0.85);
+      color: #f8fafc;
+      border-radius: 12px;
+      padding: 0.75rem;
+      overflow-x: auto;
+    }
+
+    .message pre {
+      background: rgba(255, 255, 255, 0.15);
+      border-radius: 0.75rem;
+      padding: 0.5rem 0.75rem;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
   </style>
 </head>
 <body class="h-screen overflow-hidden p-4">
   <div class="chat-container w-full max-w-4xl mx-auto h-full flex flex-col">
-    <h1 class="text-3xl font-bold text-white text-center mb-6 flex-shrink-0">局域网聊天室</h1>
+    <h1 class="text-3xl font-bold text-black text-center mb-6 flex-shrink-0">局域网聊天室</h1>
 
     <div class="flex flex-col md:flex-row gap-6 flex-1 min-h-0">
       <!-- Chat Area -->
       <div class="flex-1 bg-white bg-opacity-20 rounded-lg p-4 backdrop-blur-sm flex flex-col min-h-0">
         <div id="messages" class="flex-1 overflow-y-auto mb-4 p-2 min-h-0"></div>
-        <div class="flex flex-shrink-0">
-          <input type="text" id="messageInput" class="flex-1 px-4 py-2 rounded-l-lg border-0 focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="输入消息...">
-          <button id="sendButton" class="bg-blue-500 hover:bg-blue-600 text-white px-6 py-2 rounded-r-lg transition duration-200">发送</button>
+        <div class="flex flex-col flex-shrink-0">
+          <div class="flex">
+            <textarea id="messageInput" rows="2" class="flex-1 px-4 py-2 rounded-l-lg border-0 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none" placeholder="输入消息，支持```代码```或多行文本"></textarea>
+            <button id="sendButton" class="bg-blue-500 hover:bg-blue-600 text-black px-6 py-2 rounded-r-lg transition duration-200">发送</button>
+          </div>
+          <p class="text-xs text-black text-opacity-70 mt-2">按 Enter 发送，Shift+Enter 换行，使用 ``` 包裹代码可保留格式</p>
         </div>
       </div>
 
       <!-- Sidebar -->
       <div class="w-full md:w-64 bg-white bg-opacity-20 rounded-lg p-4 backdrop-blur-sm flex flex-col">
         <div class="mb-4 flex-shrink-0">
-          <label class="block text-white text-sm font-bold mb-2">昵称</label>
+          <label class="block text-black text-sm font-bold mb-2">昵称</label>
           <input type="text" id="nicknameInput" class="w-full px-3 py-2 rounded border-0 focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="输入昵称">
-          <button id="setNicknameButton" class="mt-2 w-full bg-green-500 hover:bg-green-600 text-white py-2 rounded transition duration-200">修改昵称</button>
+          <button id="setNicknameButton" class="mt-2 w-full bg-green-500 hover:bg-green-600 text-black py-2 rounded transition duration-200">修改昵称</button>
         </div>
         <div class="flex-1 min-h-0">
-          <h3 class="text-white text-lg font-bold mb-2">在线用户</h3>
-          <ul id="onlineUsers" class="text-white overflow-y-auto max-h-full"></ul>
+          <h3 class="text-black text-lg font-bold mb-2">在线用户</h3>
+          <ul id="onlineUsers" class="text-black overflow-y-auto max-h-full"></ul>
         </div>
       </div>
     </div>
