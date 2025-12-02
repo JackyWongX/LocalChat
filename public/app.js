@@ -186,21 +186,30 @@ function createTextMessageElement(msg) {
   container.className = `message flex mb-2 ${isOwnMessage ? 'justify-end' : 'justify-start'}`;
 
   const messageDiv = document.createElement('div');
-  messageDiv.className = `rounded-lg p-3 max-w-xs lg:max-w-md ${isOwnMessage ? 'bg-blue-500 text-white' : 'bg-white bg-opacity-30 text-gray-700'}`;
+  messageDiv.className = 'rounded-lg p-3 max-w-xs lg:max-w-md bg-white bg-opacity-30 text-gray-700';
 
-  if (!isOwnMessage) {
-    const nameDiv = document.createElement('div');
-    nameDiv.className = 'font-bold text-gray-800 mb-1';
-    nameDiv.textContent = msg.nickname;
-    messageDiv.appendChild(nameDiv);
-  }
+  // 第一行：昵称 + 时间，字体小
+  const headerDiv = document.createElement('div');
+  headerDiv.className = 'text-xs opacity-75 mb-1 flex items-center justify-between px-2';
 
+  const nicknameSpan = document.createElement('span');
+  nicknameSpan.className = 'font-semibold';
+  nicknameSpan.textContent = isOwnMessage ? '我' : msg.nickname;
+  headerDiv.appendChild(nicknameSpan);
+
+  const separator = document.createElement('span');
+  separator.className = 'mx-2';
+  separator.textContent = '·';
+  headerDiv.appendChild(separator);
+
+  const timestampSpan = document.createElement('span');
+  timestampSpan.textContent = formatTimestamp(msg.timestamp);
+  headerDiv.appendChild(timestampSpan);
+
+  messageDiv.appendChild(headerDiv);
+
+  // 第二行：消息内容，字体大
   appendMessageContent(messageDiv, msg.message || '');
-
-  const timestamp = document.createElement('span');
-  timestamp.className = `text-xs ${isOwnMessage ? 'opacity-75' : 'text-gray-600'}`;
-  timestamp.textContent = formatTimestamp(msg.timestamp);
-  messageDiv.appendChild(timestamp);
 
   container.appendChild(messageDiv);
   return container;
@@ -215,7 +224,7 @@ function appendMessageContent(wrapper, text) {
     wrapper.appendChild(label);
 
     const pre = document.createElement('pre');
-    pre.className = 'code-block mt-2 text-sm';
+    pre.className = 'code-block mt-2 text-lg';
     pre.textContent = codeBlock.code;
     wrapper.appendChild(pre);
     return;
@@ -223,14 +232,14 @@ function appendMessageContent(wrapper, text) {
 
   if (text.includes('\n')) {
     const pre = document.createElement('pre');
-    pre.className = 'whitespace-pre-wrap break-words text-sm';
+    pre.className = 'whitespace-pre-wrap break-words text-lg';
     pre.textContent = text;
     wrapper.appendChild(pre);
     return;
   }
 
   const paragraph = document.createElement('p');
-  paragraph.className = 'mb-2 break-words text-sm';
+  paragraph.className = 'mb-2 break-words text-lg';
   paragraph.textContent = text;
   wrapper.appendChild(paragraph);
 }
@@ -271,7 +280,7 @@ function createFileMessageElement(msg) {
   container.className = `message flex mb-3 ${isOwnMessage ? 'justify-end' : 'justify-start'}`;
 
   const wrapper = document.createElement('div');
-  wrapper.className = `rounded-xl p-4 max-w-xs lg:max-w-md shadow-lg ${isOwnMessage ? 'bg-blue-500 text-white' : 'bg-white text-gray-800'}`;
+  wrapper.className = 'rounded-xl p-4 max-w-xs lg:max-w-md bg-white bg-opacity-30 text-gray-700';
 
   if (!isOwnMessage) {
     const nameDiv = document.createElement('div');
@@ -297,7 +306,7 @@ function createFileMessageElement(msg) {
   metaDiv.appendChild(fileName);
 
   const size = document.createElement('div');
-  size.className = `text-xs ${isOwnMessage ? 'opacity-75' : 'text-gray-500'}`;
+  size.className = 'text-xs text-gray-500';
   size.textContent = formatFileSize(msg.fileSize);
   metaDiv.appendChild(size);
 
@@ -311,13 +320,11 @@ function createFileMessageElement(msg) {
   link.href = msg.filePath;
   link.download = msg.fileName;
   link.textContent = '下载';
-  link.className = isOwnMessage
-    ? 'text-xs bg-white bg-opacity-20 hover:bg-opacity-30 px-3 py-1 rounded-full transition duration-200'
-    : 'text-xs bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded-full transition duration-200';
+  link.className = 'text-xs bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded-full transition duration-200';
   footer.appendChild(link);
 
   const time = document.createElement('div');
-  time.className = `text-xs ${isOwnMessage ? 'opacity-75' : 'text-gray-500'}`;
+  time.className = 'text-xs text-gray-500';
   time.textContent = formatTimestamp(msg.timestamp);
   footer.appendChild(time);
 

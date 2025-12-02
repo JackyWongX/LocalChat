@@ -92,7 +92,6 @@
 </head>
 <body class="h-screen overflow-hidden p-4">
   <div class="chat-container w-full max-w-4xl mx-auto h-full flex flex-col">
-    <h1 class="text-3xl font-bold text-black text-center mb-6 flex-shrink-0">局域网聊天室</h1>
 
     <div class="flex flex-col md:flex-row gap-6 flex-1 min-h-0">
       <!-- Chat Area -->
@@ -100,10 +99,9 @@
         <div id="messages" class="flex-1 overflow-y-auto mb-4 p-2 min-h-0"></div>
         <div class="flex flex-col flex-shrink-0">
           <div class="flex">
-            <textarea id="messageInput" rows="2" class="flex-1 px-4 py-2 rounded-l-lg border-0 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none" placeholder="输入消息，支持```代码```或多行文本"></textarea>
+            <textarea id="messageInput" rows="2" class="flex-1 px-4 py-2 rounded-l-lg border-0 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none" placeholder="输入消息，支持```代码```或多行文本。按 Enter 发送，Shift+Enter 换行，拖拽文件可直接发送"></textarea>
             <button id="sendButton" class="bg-blue-500 hover:bg-blue-600 text-black px-6 py-2 rounded-r-lg transition duration-200">发送</button>
           </div>
-          <p class="text-xs text-black text-opacity-70 mt-2">按 Enter 发送，Shift+Enter 换行，使用 ``` 包裹代码可保留格式</p>
         </div>
       </div>
 
