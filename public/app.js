@@ -14,6 +14,30 @@ const closeModal = document.getElementById('closeModal');
 let currentNickname = '';
 const uploadPlaceholders = new Map();
 
+// Request notification permission on page load
+if ('Notification' in window && Notification.permission === 'default') {
+  Notification.requestPermission();
+}
+
+function showNotification(msg) {
+  if ('Notification' in window && Notification.permission === 'granted' && document.hidden) {
+    const title = `${msg.nickname} 发送了消息`;
+    let body = '';
+    if (msg.message) {
+      body = msg.message;
+    } else if (msg.type === 'file') {
+      body = `发送了文件: ${msg.fileName}`;
+    } else if (msg.type === 'image') {
+      body = '发送了图片';
+    }
+    const notification = new Notification(title, {
+      body: body
+    });
+    // Auto close after 5 seconds
+    setTimeout(() => notification.close(), 5000);
+  }
+}
+
 function generateRandomNickname() {
   const adjectives = ['快乐的', '聪明的', '勇敢的', '温柔的', '活泼的', '神秘的', '阳光的', '文艺的'];
   const nouns = ['小猫', '小狗', '小兔', '小熊', '小鸟', '小鱼', '小鹿', '小猴'];
@@ -78,6 +102,9 @@ function handlePaste(e) {
 }
 
 function uploadImage(file) {
+  if (!currentNickname) {
+    initializeNickname(); // Ensure nickname is set before uploading
+  }
   // Create a blob with a filename
   const imageFile = new File([file], `pasted-image-${Date.now()}.png`, { type: file.type });
 
@@ -104,6 +131,9 @@ function uploadImage(file) {
 function sendMessage() {
   const message = messageInput.value;
   if (!message.trim()) return;
+  if (!currentNickname) {
+    initializeNickname(); // Ensure nickname is set before sending
+  }
   socket.emit('chat message', message);
   messageInput.value = '';
 }
@@ -113,6 +143,9 @@ function generateUploadId() {
 }
 
 function uploadFile(file) {
+  if (!currentNickname) {
+    initializeNickname(); // Ensure nickname is set before uploading
+  }
   const uploadId = generateUploadId();
   socket.emit('file upload started', {
     uploadId,
@@ -177,14 +210,23 @@ document.addEventListener('drop', (e) => {
 
 socket.on('chat message', (msg) => {
   displayMessage(msg);
+  if (msg.nickname !== currentNickname) {
+    showNotification(msg);
+  }
 });
 
 socket.on('file message', (msg) => {
   displayFileMessage(msg);
+  if (msg.nickname !== currentNickname) {
+    showNotification(msg);
+  }
 });
 
 socket.on('image message', (msg) => {
   displayImageMessage(msg);
+  if (msg.nickname !== currentNickname) {
+    showNotification(msg);
+  }
 });
 
 socket.on('load messages', (messages) => {
