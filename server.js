@@ -25,7 +25,7 @@ try {
 
 const io = socketIo(server);
 
-const MESSAGES_FILE = path.join(__dirname, 'messages.json');
+const MESSAGES_FILE = path.join(__dirname, 'data', 'messages.json');
 const EXPIRY_DAYS = 3;
 
 const fileMetaByStoredName = new Map();
@@ -56,7 +56,7 @@ function cleanExpiredMessages() {
   // Delete expired files
   expiredMessages.forEach(msg => {
     if (msg.type === 'file' && msg.storedFileName) {
-      const filePath = path.join(__dirname, 'public', 'files', msg.storedFileName);
+      const filePath = path.join(__dirname, 'data', 'files', msg.storedFileName);
       try {
         if (fs.existsSync(filePath)) {
           fs.unlinkSync(filePath);
@@ -97,10 +97,11 @@ rebuildFileMetaMap();
 
 app.use(fileUpload());
 app.use(express.static('public'));
+app.use('/files', express.static(path.join(__dirname, 'data', 'files')));
 
 app.get('/download/:storedFileName', (req, res) => {
   const storedFileName = path.basename(req.params.storedFileName);
-  const fileLocation = path.join(__dirname, 'public', 'files', storedFileName);
+  const fileLocation = path.join(__dirname, 'data', 'files', storedFileName);
 
   if (!fs.existsSync(fileLocation)) {
     return res.status(404).send('文件不存在');
@@ -124,7 +125,7 @@ app.post('/upload', (req, res) => {
   const originalFileName = decodeUploadedFileName(file.name);
   const extension = path.extname(originalFileName) || path.extname(file.name) || '';
   const storedFileName = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}${extension}`;
-  const filePath = path.join(__dirname, 'public', 'files', storedFileName);
+  const filePath = path.join(__dirname, 'data', 'files', storedFileName);
 
   file.mv(filePath, (err) => {
     if (err) {
