@@ -254,8 +254,9 @@ setInterval(() => {
 const currentPort = server instanceof https.Server ? HTTPS_PORT : PORT;
 const protocol = server instanceof https.Server ? 'https' : 'http';
 
-server.listen(currentPort, () => {
-  console.log(`Server running on ${protocol}://localhost:${currentPort}`);
+server.listen(currentPort, '0.0.0.0', () => {
+  console.log(`Server running on ${protocol}://0.0.0.0:${currentPort}`);
+  console.log(`Access from other devices using ${protocol}://<your-ip>:${currentPort}`);
   if (server instanceof http.Server) {
     console.log('To enable HTTPS, generate SSL certificates (key.pem and cert.pem)');
   }
