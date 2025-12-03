@@ -188,6 +188,7 @@ socket.on('image message', (msg) => {
 });
 
 socket.on('load messages', (messages) => {
+  messagesDiv.innerHTML = ''; // Clear existing messages
   messages.forEach(msg => {
     if (msg.type === 'file') {
       displayFileMessage(msg);
@@ -197,6 +198,7 @@ socket.on('load messages', (messages) => {
       displayMessage(msg);
     }
   });
+  scrollMessagesToBottom();
 });
 
 socket.on('file upload started', (payload) => {
@@ -422,7 +424,8 @@ function createFileMessageElement(msg) {
   tile.appendChild(leftDiv);
 
   const link = document.createElement('a');
-  link.href = msg.filePath;
+  const downloadHref = msg.downloadPath || msg.filePath;
+  link.href = downloadHref;
   link.download = msg.fileName;
   link.textContent = '下载';
   link.className = 'text-xs bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded-full transition duration-200 ml-2';

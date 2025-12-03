@@ -26,7 +26,9 @@ try {
 const io = socketIo(server);
 
 const MESSAGES_FILE = path.join(__dirname, 'messages.json');
-const EXPIRY_DAYS = 7;
+const EXPIRY_DAYS = 3;
+
+const fileMetaByStoredName = new Map();
 
 // Load messages from file
 function loadMessages() {
@@ -48,16 +50,69 @@ function cleanExpiredMessages() {
   const now = Date.now();
   const expiryTime = EXPIRY_DAYS * 24 * 60 * 60 * 1000;
   let messages = loadMessages();
+  const expiredMessages = messages.filter(msg => now - msg.timestamp >= expiryTime);
   messages = messages.filter(msg => now - msg.timestamp < expiryTime);
+
+  // Delete expired files
+  expiredMessages.forEach(msg => {
+    if (msg.type === 'file' && msg.storedFileName) {
+      const filePath = path.join(__dirname, 'public', 'files', msg.storedFileName);
+      try {
+        if (fs.existsSync(filePath)) {
+          fs.unlinkSync(filePath);
+          console.log(`Deleted expired file: ${filePath}`);
+        }
+      } catch (err) {
+        console.error(`Failed to delete file ${filePath}:`, err);
+      }
+    }
+  });
+
   saveMessages(messages);
   return messages;
 }
 
+function decodeUploadedFileName(rawName = '') {
+  if (!rawName) return rawName;
+  const buffer = Buffer.from(rawName, 'latin1');
+  const utf8Name = buffer.toString('utf8');
+  return utf8Name.includes('\uFFFD') ? rawName : utf8Name;
+}
+
+function rebuildFileMetaMap() {
+  fileMetaByStoredName.clear();
+  messages.forEach(msg => {
+    if (msg.type === 'file' && msg.fileName) {
+      const storedName = msg.storedFileName || path.basename(msg.downloadPath || msg.filePath || '');
+      if (storedName) {
+        fileMetaByStoredName.set(storedName, msg.fileName);
+      }
+    }
+  });
+}
+
 let messages = cleanExpiredMessages();
 let onlineUsers = {};
+rebuildFileMetaMap();
 
 app.use(fileUpload());
 app.use(express.static('public'));
+
+app.get('/download/:storedFileName', (req, res) => {
+  const storedFileName = path.basename(req.params.storedFileName);
+  const fileLocation = path.join(__dirname, 'public', 'files', storedFileName);
+
+  if (!fs.existsSync(fileLocation)) {
+    return res.status(404).send('文件不存在');
+  }
+
+  const originalFileName = fileMetaByStoredName.get(storedFileName) || storedFileName;
+  res.download(fileLocation, originalFileName, (err) => {
+    if (err && !res.headersSent) {
+      res.status(500).send('文件下载失败');
+    }
+  });
+});
 
 // File upload route
 app.post('/upload', (req, res) => {
@@ -66,14 +121,22 @@ app.post('/upload', (req, res) => {
   }
 
   const file = req.files.file;
-  const fileName = Date.now() + '_' + file.name;
-  const filePath = path.join(__dirname, 'public', 'files', fileName);
+  const originalFileName = decodeUploadedFileName(file.name);
+  const extension = path.extname(originalFileName) || path.extname(file.name) || '';
+  const storedFileName = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}${extension}`;
+  const filePath = path.join(__dirname, 'public', 'files', storedFileName);
 
   file.mv(filePath, (err) => {
     if (err) {
       return res.status(500).send(err);
     }
-    res.json({ fileName: file.name, filePath: `/files/${fileName}`, fileSize: file.size });
+    res.json({
+      fileName: originalFileName,
+      storedFileName,
+      filePath: `/files/${storedFileName}`,
+      downloadPath: `/download/${storedFileName}`,
+      fileSize: file.size
+    });
   });
 });
 
@@ -108,10 +171,15 @@ io.on('connection', (socket) => {
       type: 'file',
       fileName: fileData.fileName,
       filePath: fileData.filePath,
+      downloadPath: fileData.downloadPath,
+      storedFileName: fileData.storedFileName,
       fileSize: fileData.fileSize,
       timestamp: Date.now(),
       uploadId: fileData.uploadId || null
     };
+    if (fileData.storedFileName && fileData.fileName) {
+      fileMetaByStoredName.set(fileData.storedFileName, fileData.fileName);
+    }
     messages.push(message);
     saveMessages(messages);
     io.emit('file message', message);
@@ -172,8 +240,15 @@ io.on('connection', (socket) => {
   });
 });
 
-// Clean expired messages every hour
-setInterval(cleanExpiredMessages, 60 * 60 * 1000);
+// Clean expired messages every minute
+setInterval(() => {
+  const oldLength = messages.length;
+  messages = cleanExpiredMessages();
+  rebuildFileMetaMap();
+  if (messages.length !== oldLength) {
+    io.emit('load messages', messages); // Broadcast updated messages to all clients
+  }
+}, 60 * 1000);
 
 const currentPort = server instanceof https.Server ? HTTPS_PORT : PORT;
 const protocol = server instanceof https.Server ? 'https' : 'http';
