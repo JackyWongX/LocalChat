@@ -277,7 +277,7 @@ function createTextMessageElement(msg) {
   container.className = `message flex mb-2 ${isOwnMessage ? 'justify-end' : 'justify-start'}`;
 
   const messageDiv = document.createElement('div');
-  messageDiv.className = 'rounded-lg p-3 max-w-xs lg:max-w-md bg-white bg-opacity-30 text-gray-700';
+  messageDiv.className = 'rounded-lg p-3 max-w-lg lg:max-w-3xl bg-white bg-opacity-30 text-gray-700';
 
   // 第一行：昵称 + 时间，字体小
   const headerDiv = document.createElement('div');
@@ -347,7 +347,7 @@ function createImageMessageElement(msg) {
   container.className = `message flex mb-2 ${isOwnMessage ? 'justify-end' : 'justify-start'}`;
 
   const messageDiv = document.createElement('div');
-  messageDiv.className = 'rounded-lg p-3 max-w-xs lg:max-w-md bg-white bg-opacity-30 text-gray-700';
+  messageDiv.className = 'rounded-lg p-3 max-w-lg lg:max-w-3xl bg-white bg-opacity-30 text-gray-700';
 
   // 第一行：昵称 + 时间，字体小
   const headerDiv = document.createElement('div');
@@ -416,7 +416,7 @@ function createFileMessageElement(msg) {
   container.className = `message flex mb-3 ${isOwnMessage ? 'justify-end' : 'justify-start'}`;
 
   const wrapper = document.createElement('div');
-  wrapper.className = 'rounded-xl p-4 max-w-xs lg:max-w-md bg-white bg-opacity-30 text-gray-700';
+  wrapper.className = 'rounded-xl p-4 max-w-lg lg:max-w-3xl bg-white bg-opacity-30 text-gray-700';
 
   // 第一行：昵称 + 时间，字体小
   const headerDiv = document.createElement('div');
