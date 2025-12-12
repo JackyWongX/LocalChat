@@ -234,6 +234,28 @@ io.on('connection', (socket) => {
     io.emit('file upload failed', payload);
   });
 
+  socket.on('delete message', (messageId) => {
+    const index = messages.findIndex(msg => msg.id === messageId);
+    if (index !== -1) {
+      const message = messages[index];
+      // Delete associated file if it's a file or image message
+      if ((message.type === 'file' || message.type === 'image') && message.storedFileName) {
+        const filePath = path.join(__dirname, 'data', 'files', message.storedFileName);
+        try {
+          if (fs.existsSync(filePath)) {
+            fs.unlinkSync(filePath);
+            console.log(`Deleted file: ${filePath}`);
+          }
+        } catch (err) {
+          console.error(`Failed to delete file ${filePath}:`, err);
+        }
+      }
+      messages.splice(index, 1);
+      saveMessages(messages);
+      io.emit('message deleted', messageId);
+    }
+  });
+
   socket.on('disconnect', () => {
     console.log('A user disconnected');
     delete onlineUsers[socket.id];

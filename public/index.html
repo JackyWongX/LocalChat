@@ -132,10 +132,20 @@
 
   <!-- Image Modal -->
   <div id="imageModal" class="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 opacity-0 pointer-events-none transition-opacity duration-300">
-    <div class="relative max-w-4xl max-h-full p-4">
-      <img id="modalImage" class="max-w-full max-h-full object-contain" src="" alt="Image">
-      <button id="closeModal" class="absolute top-2 right-2 text-white text-2xl font-bold hover:text-gray-300">&times;</button>
+    <div class="relative max-w-full max-h-full p-4 flex items-center justify-center">
+      <img id="modalImage" class="cursor-move select-none" src="" alt="Image" style="transform-origin: center; transition: transform 0.1s ease; max-width: none; max-height: none;">
+      <button id="closeModal" class="absolute top-2 right-2 text-white text-2xl font-bold hover:text-gray-300 bg-black bg-opacity-50 rounded-full w-10 h-10 flex items-center justify-center">&times;</button>
+      <div class="absolute bottom-4 left-1/2 transform -translate-x-1/2 flex space-x-2 bg-black bg-opacity-50 rounded-lg p-2">
+        <button id="zoomOut" class="text-white text-xl font-bold hover:text-gray-300 bg-gray-700 bg-opacity-50 rounded px-3 py-1">-</button>
+        <button id="zoomReset" class="text-white text-sm font-bold hover:text-gray-300 bg-gray-700 bg-opacity-50 rounded px-3 py-1">重置</button>
+        <button id="zoomIn" class="text-white text-xl font-bold hover:text-gray-300 bg-gray-700 bg-opacity-50 rounded px-3 py-1">+</button>
+      </div>
     </div>
+  </div>
+
+  <!-- Context Menu -->
+  <div id="contextMenu" class="fixed bg-white border border-gray-300 rounded shadow-lg py-1 z-50 opacity-0 pointer-events-none transition-opacity duration-200">
+    <button id="deleteMessageBtn" class="w-full text-left px-4 py-2 hover:bg-gray-100 text-gray-700">删除消息</button>
   </div>
 
   <script src="/socket.io/socket.io.js"></script>

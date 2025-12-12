@@ -10,6 +10,11 @@ const dragOverlay = document.getElementById('dragOverlay');
 const imageModal = document.getElementById('imageModal');
 const modalImage = document.getElementById('modalImage');
 const closeModal = document.getElementById('closeModal');
+const zoomIn = document.getElementById('zoomIn');
+const zoomOut = document.getElementById('zoomOut');
+const zoomReset = document.getElementById('zoomReset');
+const contextMenu = document.getElementById('contextMenu');
+const deleteMessageBtn = document.getElementById('deleteMessageBtn');
 
 let currentNickname = '';
 const uploadPlaceholders = new Map();
@@ -60,7 +65,34 @@ function initializeNickname() {
   socket.emit('set nickname', currentNickname);
 }
 
-document.addEventListener('DOMContentLoaded', initializeNickname);
+document.addEventListener('DOMContentLoaded', () => {
+  initializeNickname();
+
+  // Initialize drag and drop handlers
+  dragOverHandler = (e) => {
+    e.preventDefault();
+    dragOverlay.style.opacity = '1';
+    dragOverlay.style.pointerEvents = 'auto';
+  };
+  dragLeaveHandler = (e) => {
+    e.preventDefault();
+    if (e.target === document.body || (e.clientX === 0 && e.clientY === 0)) {
+      dragOverlay.style.opacity = '0';
+      dragOverlay.style.pointerEvents = 'none';
+    }
+  };
+  dropHandler = (e) => {
+    e.preventDefault();
+    dragOverlay.style.opacity = '0';
+    dragOverlay.style.pointerEvents = 'none';
+    const files = e.dataTransfer.files;
+    Array.from(files).forEach(uploadFile);
+  };
+
+  document.addEventListener('dragover', dragOverHandler);
+  document.addEventListener('dragleave', dragLeaveHandler);
+  document.addEventListener('drop', dropHandler);
+});
 
 setNicknameButton.addEventListener('click', () => {
   if (nicknameInput.disabled) {
@@ -186,28 +218,6 @@ function uploadFile(file) {
   xhr.send(formData);
 }
 
-document.addEventListener('dragover', (e) => {
-  e.preventDefault();
-  dragOverlay.style.opacity = '1';
-  dragOverlay.style.pointerEvents = 'auto';
-});
-
-document.addEventListener('dragleave', (e) => {
-  e.preventDefault();
-  if (e.target === document.body || (e.clientX === 0 && e.clientY === 0)) {
-    dragOverlay.style.opacity = '0';
-    dragOverlay.style.pointerEvents = 'none';
-  }
-});
-
-document.addEventListener('drop', (e) => {
-  e.preventDefault();
-  dragOverlay.style.opacity = '0';
-  dragOverlay.style.pointerEvents = 'none';
-  const files = e.dataTransfer.files;
-  Array.from(files).forEach(uploadFile);
-});
-
 socket.on('chat message', (msg) => {
   displayMessage(msg);
   if (msg.nickname !== currentNickname) {
@@ -275,6 +285,8 @@ function createTextMessageElement(msg) {
   const isOwnMessage = msg.nickname === currentNickname;
   const container = document.createElement('div');
   container.className = `message flex mb-2 ${isOwnMessage ? 'justify-end' : 'justify-start'}`;
+  container.setAttribute('data-message-id', msg.id);
+  container.addEventListener('contextmenu', (e) => showContextMenu(e, msg.id));
 
   const messageDiv = document.createElement('div');
   messageDiv.className = 'rounded-lg p-3 max-w-lg lg:max-w-3xl bg-white bg-opacity-30 text-gray-700';
@@ -345,6 +357,8 @@ function createImageMessageElement(msg) {
   const isOwnMessage = msg.nickname === currentNickname;
   const container = document.createElement('div');
   container.className = `message flex mb-2 ${isOwnMessage ? 'justify-end' : 'justify-start'}`;
+  container.setAttribute('data-message-id', msg.id);
+  container.addEventListener('contextmenu', (e) => showContextMenu(e, msg.id));
 
   const messageDiv = document.createElement('div');
   messageDiv.className = 'rounded-lg p-3 max-w-lg lg:max-w-3xl bg-white bg-opacity-30 text-gray-700';
@@ -414,6 +428,8 @@ function createFileMessageElement(msg) {
   const isOwnMessage = msg.nickname === currentNickname;
   const container = document.createElement('div');
   container.className = `message flex mb-3 ${isOwnMessage ? 'justify-end' : 'justify-start'}`;
+  container.setAttribute('data-message-id', msg.id);
+  container.addEventListener('contextmenu', (e) => showContextMenu(e, msg.id));
 
   const wrapper = document.createElement('div');
   wrapper.className = 'rounded-xl p-4 max-w-lg lg:max-w-3xl bg-white bg-opacity-30 text-gray-700';
@@ -587,20 +603,171 @@ function handleUploadFailure(payload) {
 }
 
 // Image modal functionality
+let dragOverHandler, dragLeaveHandler, dropHandler;
+
+function disableGlobalDrag() {
+  dragOverHandler = (e) => {
+    e.preventDefault();
+    dragOverlay.style.opacity = '1';
+    dragOverlay.style.pointerEvents = 'auto';
+  };
+  dragLeaveHandler = (e) => {
+    e.preventDefault();
+    if (e.target === document.body || (e.clientX === 0 && e.clientY === 0)) {
+      dragOverlay.style.opacity = '0';
+      dragOverlay.style.pointerEvents = 'none';
+    }
+  };
+  dropHandler = (e) => {
+    e.preventDefault();
+    dragOverlay.style.opacity = '0';
+    dragOverlay.style.pointerEvents = 'none';
+    const files = e.dataTransfer.files;
+    Array.from(files).forEach(uploadFile);
+  };
+
+  document.removeEventListener('dragover', dragOverHandler);
+  document.removeEventListener('dragleave', dragLeaveHandler);
+  document.removeEventListener('drop', dropHandler);
+}
+
+function enableGlobalDrag() {
+  document.addEventListener('dragover', dragOverHandler);
+  document.addEventListener('dragleave', dragLeaveHandler);
+  document.addEventListener('drop', dropHandler);
+}
+
+function updateImageTransform() {
+  modalImage.style.transform = `scale(${currentZoom}) translate(${imageStartX}px, ${imageStartY}px)`;
+}
+
+function resetImageView() {
+  currentZoom = 1;
+  imageStartX = 0;
+  imageStartY = 0;
+  updateImageTransform();
+}
+
 closeModal.addEventListener('click', () => {
   imageModal.style.opacity = '0';
   imageModal.style.pointerEvents = 'none';
+  resetImageView();
+  enableGlobalDrag();
 });
 
 imageModal.addEventListener('click', (e) => {
   if (e.target === imageModal) {
     imageModal.style.opacity = '0';
     imageModal.style.pointerEvents = 'none';
+    resetImageView();
+    enableGlobalDrag();
+  }
+});
+
+zoomIn.addEventListener('click', (e) => {
+  e.preventDefault();
+  e.stopPropagation();
+  currentZoom = Math.min(currentZoom * 1.2, 5);
+  updateImageTransform();
+});
+
+zoomOut.addEventListener('click', (e) => {
+  e.preventDefault();
+  e.stopPropagation();
+  currentZoom = Math.max(currentZoom / 1.2, 0.1);
+  updateImageTransform();
+});
+
+zoomReset.addEventListener('click', (e) => {
+  e.preventDefault();
+  e.stopPropagation();
+  resetImageView();
+});
+
+modalImage.addEventListener('wheel', (e) => {
+  e.preventDefault();
+  e.stopPropagation();
+  if (e.deltaY < 0) {
+    currentZoom = Math.min(currentZoom * 1.1, 5);
+  } else {
+    currentZoom = Math.max(currentZoom / 1.1, 0.1);
+  }
+  updateImageTransform();
+});
+
+modalImage.addEventListener('mousedown', (e) => {
+  e.preventDefault();
+  e.stopPropagation();
+  if (currentZoom > 1) {
+    isDragging = true;
+    dragStartX = e.clientX;
+    dragStartY = e.clientY;
+    modalImage.style.cursor = 'grabbing';
+  }
+});
+
+document.addEventListener('mousemove', (e) => {
+  if (isDragging) {
+    const deltaX = e.clientX - dragStartX;
+    const deltaY = e.clientY - dragStartY;
+    imageStartX += deltaX / currentZoom;
+    imageStartY += deltaY / currentZoom;
+    dragStartX = e.clientX;
+    dragStartY = e.clientY;
+    updateImageTransform();
+  }
+});
+
+document.addEventListener('mouseup', () => {
+  if (isDragging) {
+    isDragging = false;
+    modalImage.style.cursor = currentZoom > 1 ? 'grab' : 'move';
   }
 });
 
 function openImageModal(src) {
   modalImage.src = src;
+  resetImageView();
   imageModal.style.opacity = '1';
   imageModal.style.pointerEvents = 'auto';
+  modalImage.style.cursor = 'move';
+  disableGlobalDrag();
 }
+
+// Context menu functionality
+let currentMessageId = null;
+
+function showContextMenu(e, messageId) {
+  e.preventDefault();
+  currentMessageId = messageId;
+  contextMenu.style.left = `${e.clientX}px`;
+  contextMenu.style.top = `${e.clientY}px`;
+  contextMenu.style.opacity = '1';
+  contextMenu.style.pointerEvents = 'auto';
+}
+
+function hideContextMenu() {
+  contextMenu.style.opacity = '0';
+  contextMenu.style.pointerEvents = 'none';
+  currentMessageId = null;
+}
+
+deleteMessageBtn.addEventListener('click', () => {
+  if (currentMessageId) {
+    socket.emit('delete message', currentMessageId);
+    hideContextMenu();
+  }
+});
+
+document.addEventListener('click', (e) => {
+  if (!contextMenu.contains(e.target)) {
+    hideContextMenu();
+  }
+});
+
+socket.on('message deleted', (messageId) => {
+  const messageElement = document.querySelector(`[data-message-id="${messageId}"]`);
+  if (messageElement) {
+    messageElement.remove();
+  }
+});
