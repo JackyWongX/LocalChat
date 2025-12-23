@@ -5,8 +5,11 @@ const socketIo = require('socket.io');
 const fs = require('fs');
 const path = require('path');
 const fileUpload = require('express-fileupload');
+const cors = require('cors');
 
 const app = express();
+
+app.use(cors());
 
 // Check if SSL certificates exist
 let server;
