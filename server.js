@@ -111,9 +111,17 @@ app.get('/download/:storedFileName', (req, res) => {
   }
 
   const originalFileName = fileMetaByStoredName.get(storedFileName) || storedFileName;
-  res.download(fileLocation, originalFileName, (err) => {
-    if (err && !res.headersSent) {
-      res.status(500).send('文件下载失败');
+
+  // Use sendFile with manual header to ensure better compatibility with Chinese filenames
+  // and avoid potential issues with res.download in some environments
+  res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(originalFileName)}`);
+
+  res.sendFile(fileLocation, (err) => {
+    if (err) {
+      console.error('File download error:', err);
+      if (!res.headersSent) {
+        res.status(500).send('文件下载失败');
+      }
     }
   });
 });
@@ -286,3 +294,8 @@ server.listen(currentPort, '0.0.0.0', () => {
     console.log('To enable HTTPS, generate SSL certificates (key.pem and cert.pem)');
   }
 });
+
+// Increase Keep-Alive timeout to prevent "Network Error" on downloads
+// when the browser tries to reuse an idle connection that the server has closed.
+server.keepAliveTimeout = 120000 * 100; // 2 minutes
+server.headersTimeout = 121000 * 100;   // Must be greater than keepAliveTimeout

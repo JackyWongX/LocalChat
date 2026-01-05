@@ -485,6 +485,7 @@ function createFileMessageElement(msg) {
   const downloadHref = msg.downloadPath || msg.filePath;
   link.href = downloadHref;
   link.download = msg.fileName;
+  link.target = '_blank';
   link.textContent = '下载';
   link.className = 'text-xs bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded-full transition duration-200 ml-2';
   tile.appendChild(link);
