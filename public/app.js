@@ -1,3 +1,8 @@
+console.log('LocalChat client script loaded');
+window.addEventListener('error', (e) => {
+  console.error('Unhandled error:', e.message || e.error, e.error || e);
+});
+
 const socket = io();
 
 const messageInput = document.getElementById('messageInput');
@@ -5,7 +10,6 @@ const sendButton = document.getElementById('sendButton');
 const messagesDiv = document.getElementById('messages');
 const nicknameInput = document.getElementById('nicknameInput');
 const setNicknameButton = document.getElementById('setNicknameButton');
-const onlineUsersUl = document.getElementById('onlineUsers');
 const dragOverlay = document.getElementById('dragOverlay');
 const imageModal = document.getElementById('imageModal');
 const modalImage = document.getElementById('modalImage');
@@ -94,32 +98,36 @@ document.addEventListener('DOMContentLoaded', () => {
   document.addEventListener('drop', dropHandler);
 });
 
-setNicknameButton.addEventListener('click', () => {
-  if (nicknameInput.disabled) {
-    nicknameInput.disabled = false;
-    setNicknameButton.textContent = '保存';
-    nicknameInput.focus();
-  } else {
-    const newNickname = nicknameInput.value.trim();
-    if (newNickname && newNickname !== currentNickname) {
-      currentNickname = newNickname;
-      localStorage.setItem('chatNickname', currentNickname);
-      socket.emit('set nickname', currentNickname);
+if (setNicknameButton) {
+  setNicknameButton.addEventListener('click', () => {
+    if (nicknameInput && nicknameInput.disabled) {
+      nicknameInput.disabled = false;
+      setNicknameButton.textContent = '保存';
+      nicknameInput.focus();
+    } else if (nicknameInput) {
+      const newNickname = nicknameInput.value.trim();
+      if (newNickname && newNickname !== currentNickname) {
+        currentNickname = newNickname;
+        localStorage.setItem('chatNickname', currentNickname);
+        socket.emit('set nickname', currentNickname);
+      }
+      nicknameInput.disabled = true;
+      setNicknameButton.textContent = '修改昵称';
     }
-    nicknameInput.disabled = true;
-    setNicknameButton.textContent = '修改昵称';
-  }
-});
+  });
+}
 
-sendButton.addEventListener('click', sendMessage);
-messageInput.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter' && !e.shiftKey) {
-    e.preventDefault();
-    sendMessage();
-  }
-});
+if (sendButton) sendButton.addEventListener('click', sendMessage);
+if (messageInput) {
+  messageInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
+  });
+}
 
-messageInput.addEventListener('paste', handlePaste);
+if (messageInput) messageInput.addEventListener('paste', handlePaste);
 
 function handlePaste(e) {
   const items = e.clipboardData.items;
@@ -265,15 +273,7 @@ socket.on('file upload failed', (payload) => {
   handleUploadFailure(payload);
 });
 
-socket.on('update online users', (users) => {
-  onlineUsersUl.innerHTML = '';
-  users.forEach(user => {
-    const li = document.createElement('li');
-    li.className = 'mb-1';
-    li.textContent = user;
-    onlineUsersUl.appendChild(li);
-  });
-});
+// 在线用户显示已移除 — 不再处理 'update online users' 事件
 
 function displayMessage(msg) {
   const element = createTextMessageElement(msg);
@@ -649,14 +649,14 @@ function resetImageView() {
   updateImageTransform();
 }
 
-closeModal.addEventListener('click', () => {
+if (closeModal) closeModal.addEventListener('click', () => {
   imageModal.style.opacity = '0';
   imageModal.style.pointerEvents = 'none';
   resetImageView();
   enableGlobalDrag();
 });
 
-imageModal.addEventListener('click', (e) => {
+if (imageModal) imageModal.addEventListener('click', (e) => {
   if (e.target === imageModal) {
     imageModal.style.opacity = '0';
     imageModal.style.pointerEvents = 'none';
@@ -665,47 +665,49 @@ imageModal.addEventListener('click', (e) => {
   }
 });
 
-zoomIn.addEventListener('click', (e) => {
+if (zoomIn) zoomIn.addEventListener('click', (e) => {
   e.preventDefault();
   e.stopPropagation();
   currentZoom = Math.min(currentZoom * 1.2, 5);
   updateImageTransform();
 });
 
-zoomOut.addEventListener('click', (e) => {
+if (zoomOut) zoomOut.addEventListener('click', (e) => {
   e.preventDefault();
   e.stopPropagation();
   currentZoom = Math.max(currentZoom / 1.2, 0.1);
   updateImageTransform();
 });
 
-zoomReset.addEventListener('click', (e) => {
+if (zoomReset) zoomReset.addEventListener('click', (e) => {
   e.preventDefault();
   e.stopPropagation();
   resetImageView();
 });
 
-modalImage.addEventListener('wheel', (e) => {
-  e.preventDefault();
-  e.stopPropagation();
-  if (e.deltaY < 0) {
-    currentZoom = Math.min(currentZoom * 1.1, 5);
-  } else {
-    currentZoom = Math.max(currentZoom / 1.1, 0.1);
-  }
-  updateImageTransform();
-});
+if (modalImage) {
+  modalImage.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.deltaY < 0) {
+      currentZoom = Math.min(currentZoom * 1.1, 5);
+    } else {
+      currentZoom = Math.max(currentZoom / 1.1, 0.1);
+    }
+    updateImageTransform();
+  });
 
-modalImage.addEventListener('mousedown', (e) => {
-  e.preventDefault();
-  e.stopPropagation();
-  if (currentZoom > 1) {
-    isDragging = true;
-    dragStartX = e.clientX;
-    dragStartY = e.clientY;
-    modalImage.style.cursor = 'grabbing';
-  }
-});
+  modalImage.addEventListener('mousedown', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (currentZoom > 1) {
+      isDragging = true;
+      dragStartX = e.clientX;
+      dragStartY = e.clientY;
+      modalImage.style.cursor = 'grabbing';
+    }
+  });
+}
 
 document.addEventListener('mousemove', (e) => {
   if (isDragging) {
@@ -753,7 +755,7 @@ function hideContextMenu() {
   currentMessageId = null;
 }
 
-deleteMessageBtn.addEventListener('click', () => {
+if (deleteMessageBtn) deleteMessageBtn.addEventListener('click', () => {
   if (currentMessageId) {
     socket.emit('delete message', currentMessageId);
     hideContextMenu();

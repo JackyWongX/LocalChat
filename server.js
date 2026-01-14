@@ -147,6 +147,12 @@ app.get('/download/:storedFileName', (req, res) => {
   // 这能更好地处理各种文件名的编码，并自动设置正确的 Content-Type 和 Content-Disposition
   res.download(fileLocation, originalFileName, (err) => {
     if (err) {
+      // 客户端在下载过程中取消连接或网络中断会触发 ECONNABORTED（Request aborted）
+      // 将其视为常见且非致命的事件，避免打印大量堆栈信息
+      if (err && (err.code === 'ECONNABORTED' || err.code === 'ERR_STREAM_DESTROYED')) {
+        console.log(`文件下载中止: ${storedFileName} (${err.code})`);
+        return;
+      }
       console.error('文件下载出错:', err);
       // 如果 header 还没发送，可以返回错误信息
       if (!res.headersSent) {
@@ -334,4 +340,5 @@ server.listen(currentPort, '0.0.0.0', () => {
 // Increase Keep-Alive timeout to prevent "Network Error" on downloads
 // when the browser tries to reuse an idle connection that the server has closed.
 server.keepAliveTimeout = 61000; // 61 seconds
-server.headersTimeout = 121000 * 100;   // Must be greater than keepAliveTimeout
+// headersTimeout must be greater than keepAliveTimeout. Use a reasonable value (ms).
+server.headersTimeout = 121000;   // 121 seconds

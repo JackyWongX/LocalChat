@@ -64,10 +64,7 @@
     }
 
     /* Firefox */
-    #onlineUsers {
-      scrollbar-width: thin;
-      scrollbar-color: rgba(59, 130, 246, 0.4) rgba(255, 255, 255, 0.1);
-    }
+    /* online users list removed */
 
     pre {
       font-family: 'Fira Code', 'JetBrains Mono', Consolas, monospace;
@@ -90,34 +87,33 @@
     }
   </style>
 </head>
-<body class="h-screen overflow-hidden px-8 py-10">
+<body class="h-screen overflow-hidden px-4 sm:px-8 py-6 sm:py-10">
   <div class="chat-container w-full max-w-4xl mx-auto h-full flex flex-col">
 
-    <div class="flex flex-col md:flex-row gap-6 flex-1 min-h-0">
-      <!-- Chat Area -->
-      <div class="flex-1 bg-white bg-opacity-20 rounded-lg p-4 backdrop-blur-sm flex flex-col min-h-0">
-        <div id="messages" class="flex-1 overflow-y-auto mb-4 p-2 min-h-0"></div>
-        <div class="flex flex-col flex-shrink-0">
-          <div class="flex">
-            <textarea id="messageInput" rows="2" class="flex-1 px-4 py-2 rounded-l-lg border-0 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none" placeholder="输入消息，支持```代码```或多行文本。按 Enter 发送，Shift+Enter 换行，拖拽文件可直接发送，粘贴截图可发送图片"></textarea>
-            <button id="sendButton" class="bg-blue-500 hover:bg-blue-600 text-black px-6 py-2 rounded-r-lg transition duration-200">发送</button>
-          </div>
-        </div>
+    <!-- Header: 昵称 一行显示，右侧显示在线用户（桌面可见，移动隐藏） -->
+    <header class="flex items-center justify-between bg-white bg-opacity-20 rounded-lg p-3 sm:p-4 backdrop-blur-sm mb-4">
+      <div class="flex items-center space-x-3 flex-1 min-w-0">
+        <label class="text-black font-semibold">昵称：</label>
+        <input type="text" id="nicknameInput" class="px-3 py-2 rounded border-0 focus:outline-none focus:ring-2 focus:ring-blue-500 w-full sm:w-auto" placeholder="输入昵称">
       </div>
+      <div class="ml-4 flex-shrink-0">
+        <button id="setNicknameButton" class="bg-green-500 hover:bg-green-600 text-black py-2 px-4 rounded transition duration-200">修改</button>
+      </div>
+    </header>
 
-      <!-- Sidebar -->
-      <div class="w-full md:w-64 bg-white bg-opacity-20 rounded-lg p-4 backdrop-blur-sm flex flex-col">
-        <div class="mb-4 flex-shrink-0">
-          <label class="block text-black text-sm font-bold mb-2">昵称</label>
-          <input type="text" id="nicknameInput" class="w-full px-3 py-2 rounded border-0 focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="输入昵称">
-          <button id="setNicknameButton" class="mt-2 w-full bg-green-500 hover:bg-green-600 text-black py-2 rounded transition duration-200">修改昵称</button>
-        </div>
-        <div class="flex-1 min-h-0">
-          <h3 class="text-black text-lg font-bold mb-2">在线用户</h3>
-          <ul id="onlineUsers" class="text-black overflow-y-auto max-h-full"></ul>
-        </div>
+    <!-- Messages area -->
+    <main class="flex-1 bg-white bg-opacity-20 rounded-lg p-4 backdrop-blur-sm flex flex-col min-h-0">
+      <div id="messages" class="flex-1 overflow-y-auto p-2 min-h-0"></div>
+    </main>
+
+    <!-- Footer: 输入框 + 发送按钮 -->
+    <footer class="mt-4 flex-shrink-0">
+      <div class="flex">
+        <textarea id="messageInput" rows="2" class="flex-1 px-4 py-2 rounded-l-lg border-0 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none" placeholder="输入消息，支持```代码```或多行文本。按 Enter 发送，Shift+Enter 换行，拖拽文件可直接发送，粘贴截图可发送图片"></textarea>
+        <button id="sendButton" class="bg-blue-500 hover:bg-blue-600 text-black px-6 py-2 rounded-r-lg transition duration-200">发送</button>
       </div>
-    </div>
+    </footer>
+
   </div>
 
   <!-- Drag and Drop Overlay -->
