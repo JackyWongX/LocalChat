@@ -112,13 +112,12 @@ app.get('/download/:storedFileName', (req, res) => {
 
   const originalFileName = fileMetaByStoredName.get(storedFileName) || storedFileName;
 
-  // Use sendFile with manual header to ensure better compatibility with Chinese filenames
-  // and avoid potential issues with res.download in some environments
-  res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(originalFileName)}`);
-
-  res.sendFile(fileLocation, (err) => {
+  // 使用 res.download 替代手动设置 header 和 sendFile
+  // 这能更好地处理各种文件名的编码，并自动设置正确的 Content-Type 和 Content-Disposition
+  res.download(fileLocation, originalFileName, (err) => {
     if (err) {
-      console.error('File download error:', err);
+      console.error('文件下载出错:', err);
+      // 如果 header 还没发送，可以返回错误信息
       if (!res.headersSent) {
         res.status(500).send('文件下载失败');
       }
@@ -297,5 +296,5 @@ server.listen(currentPort, '0.0.0.0', () => {
 
 // Increase Keep-Alive timeout to prevent "Network Error" on downloads
 // when the browser tries to reuse an idle connection that the server has closed.
-server.keepAliveTimeout = 120000 * 100; // 2 minutes
+server.keepAliveTimeout = 61000; // 61 seconds
 server.headersTimeout = 121000 * 100;   // Must be greater than keepAliveTimeout

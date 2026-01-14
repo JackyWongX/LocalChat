@@ -484,8 +484,8 @@ function createFileMessageElement(msg) {
   const link = document.createElement('a');
   const downloadHref = msg.downloadPath || msg.filePath;
   link.href = downloadHref;
-  link.download = msg.fileName;
-  link.target = '_blank';
+  // 移除 target="_blank"，因为它在某些浏览器中会导致下载时出现“网络问题”
+  // 同时由于服务器已经设置了 Content-Disposition，浏览器会自动处理下载
   link.textContent = '下载';
   link.className = 'text-xs bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded-full transition duration-200 ml-2';
   tile.appendChild(link);
