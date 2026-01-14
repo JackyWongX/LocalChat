@@ -58,21 +58,51 @@ function cleanExpiredMessages() {
 
   // Delete expired files
   expiredMessages.forEach(msg => {
-    if (msg.type === 'file' && msg.storedFileName) {
-      const filePath = path.join(__dirname, 'data', 'files', msg.storedFileName);
-      try {
-        if (fs.existsSync(filePath)) {
-          fs.unlinkSync(filePath);
-          console.log(`Deleted expired file: ${filePath}`);
+    if ((msg.type === 'file' || msg.type === 'image')) {
+      const storedFileName = msg.storedFileName || (msg.filePath ? path.basename(msg.filePath) : null);
+      if (storedFileName) {
+        const filePath = path.join(__dirname, 'data', 'files', storedFileName);
+        try {
+          if (fs.existsSync(filePath)) {
+            fs.unlinkSync(filePath);
+            console.log(`Deleted expired file: ${filePath}`);
+          }
+        } catch (err) {
+          console.error(`Failed to delete file ${filePath}:`, err);
         }
-      } catch (err) {
-        console.error(`Failed to delete file ${filePath}:`, err);
       }
     }
   });
 
   saveMessages(messages);
   return messages;
+}
+
+// Insurance cleanup: Scan filesystem for files older than EXPIRY_DAYS
+function cleanOrphanedFiles() {
+  const filesDir = path.join(__dirname, 'data', 'files');
+  if (!fs.existsSync(filesDir)) return;
+
+  const now = Date.now();
+  const expiryTime = EXPIRY_DAYS * 24 * 60 * 60 * 1000;
+
+  try {
+    const files = fs.readdirSync(filesDir);
+    files.forEach(file => {
+      const filePath = path.join(filesDir, file);
+      try {
+        const stats = fs.statSync(filePath);
+        if (now - stats.mtimeMs >= expiryTime) {
+          fs.unlinkSync(filePath);
+          console.log(`Insurance cleanup deleted: ${file}`);
+        }
+      } catch (err) {
+        console.error(`Error processing file ${file} for insurance cleanup:`, err);
+      }
+    });
+  } catch (err) {
+    console.error('Error reading files directory for insurance cleanup:', err);
+  }
 }
 
 function decodeUploadedFileName(rawName = '') {
@@ -85,8 +115,8 @@ function decodeUploadedFileName(rawName = '') {
 function rebuildFileMetaMap() {
   fileMetaByStoredName.clear();
   messages.forEach(msg => {
-    if (msg.type === 'file' && msg.fileName) {
-      const storedName = msg.storedFileName || path.basename(msg.downloadPath || msg.filePath || '');
+    if ((msg.type === 'file' || msg.type === 'image') && msg.fileName) {
+      const storedName = msg.storedFileName || (msg.filePath ? path.basename(msg.filePath) : null);
       if (storedName) {
         fileMetaByStoredName.set(storedName, msg.fileName);
       }
@@ -95,6 +125,7 @@ function rebuildFileMetaMap() {
 }
 
 let messages = cleanExpiredMessages();
+cleanOrphanedFiles();
 let onlineUsers = {};
 rebuildFileMetaMap();
 
@@ -203,6 +234,8 @@ io.on('connection', (socket) => {
       type: 'image',
       fileName: imageData.fileName,
       filePath: imageData.filePath,
+      downloadPath: imageData.downloadPath,
+      storedFileName: imageData.storedFileName,
       fileSize: imageData.fileSize,
       timestamp: Date.now()
     };
@@ -249,15 +282,18 @@ io.on('connection', (socket) => {
     if (index !== -1) {
       const message = messages[index];
       // Delete associated file if it's a file or image message
-      if ((message.type === 'file' || message.type === 'image') && message.storedFileName) {
-        const filePath = path.join(__dirname, 'data', 'files', message.storedFileName);
-        try {
-          if (fs.existsSync(filePath)) {
-            fs.unlinkSync(filePath);
-            console.log(`Deleted file: ${filePath}`);
+      if (message.type === 'file' || message.type === 'image') {
+        const storedFileName = message.storedFileName || (message.filePath ? path.basename(message.filePath) : null);
+        if (storedFileName) {
+          const filePath = path.join(__dirname, 'data', 'files', storedFileName);
+          try {
+            if (fs.existsSync(filePath)) {
+              fs.unlinkSync(filePath);
+              console.log(`Deleted file: ${filePath}`);
+            }
+          } catch (err) {
+            console.error(`Failed to delete file ${filePath}:`, err);
           }
-        } catch (err) {
-          console.error(`Failed to delete file ${filePath}:`, err);
         }
       }
       messages.splice(index, 1);
@@ -277,6 +313,7 @@ io.on('connection', (socket) => {
 setInterval(() => {
   const oldLength = messages.length;
   messages = cleanExpiredMessages();
+  cleanOrphanedFiles(); // Second layer of protection
   rebuildFileMetaMap();
   if (messages.length !== oldLength) {
     io.emit('load messages', messages); // Broadcast updated messages to all clients
