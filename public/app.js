@@ -73,29 +73,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initializeNickname();
 
   // Initialize drag and drop handlers
-  dragOverHandler = (e) => {
-    e.preventDefault();
-    dragOverlay.style.opacity = '1';
-    dragOverlay.style.pointerEvents = 'auto';
-  };
-  dragLeaveHandler = (e) => {
-    e.preventDefault();
-    if (e.target === document.body || (e.clientX === 0 && e.clientY === 0)) {
-      dragOverlay.style.opacity = '0';
-      dragOverlay.style.pointerEvents = 'none';
-    }
-  };
-  dropHandler = (e) => {
-    e.preventDefault();
-    dragOverlay.style.opacity = '0';
-    dragOverlay.style.pointerEvents = 'none';
-    const files = e.dataTransfer.files;
-    Array.from(files).forEach(uploadFile);
-  };
-
-  document.addEventListener('dragover', dragOverHandler);
-  document.addEventListener('dragleave', dragLeaveHandler);
-  document.addEventListener('drop', dropHandler);
+  enableGlobalDrag();
 });
 
 if (setNicknameButton) {
@@ -180,6 +158,19 @@ function sendMessage() {
 
 function generateUploadId() {
   return `upload-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function linkify(text) {
+  // 先对 HTML 进行转义以防止 XSS
+  const div = document.createElement('div');
+  div.textContent = text;
+  const escapedText = div.innerHTML;
+
+  // 正则表达式匹配链接，更加精准地处理边界字符（如中文标点符号）
+  const urlRegex = /https?:\/\/[^\s\u4e00-\u9fa5\uff01-\uff0f\uff1a-\uff20\uff3b-\uff40\uff5b-\uff65]+/g;
+  return escapedText.replace(urlRegex, (url) => {
+    return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="text-blue-500 hover:underline break-all">${url}</a>`;
+  });
 }
 
 function uploadFile(file) {
@@ -336,14 +327,26 @@ function appendMessageContent(wrapper, text) {
   if (text.includes('\n')) {
     const pre = document.createElement('pre');
     pre.className = 'whitespace-pre-wrap break-words text-lg';
-    pre.textContent = text;
+    // 对于多行文本也要经过 linkify 处理，但需要小心换行符
+    // 为简单起见，这里先转义 HTML，再处理链接，最后处理换行
+    const div = document.createElement('div');
+    div.textContent = text;
+    let processed = div.innerHTML;
+
+    // 同样使用新的正则表达式
+    const urlRegex = /https?:\/\/[^\s\u4e00-\u9fa5\uff01-\uff0f\uff1a-\uff20\uff3b-\uff40\uff5b-\uff65]+/g;
+    processed = processed.replace(urlRegex, (url) => {
+      return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="text-blue-500 hover:underline break-all">${url}</a>`;
+    });
+
+    pre.innerHTML = processed;
     wrapper.appendChild(pre);
     return;
   }
 
   const paragraph = document.createElement('p');
   paragraph.className = 'mb-2 break-words text-lg';
-  paragraph.textContent = text;
+  paragraph.innerHTML = linkify(text);
   wrapper.appendChild(paragraph);
 }
 
@@ -604,35 +607,37 @@ function handleUploadFailure(payload) {
 }
 
 // Image modal functionality
-let dragOverHandler, dragLeaveHandler, dropHandler;
+const dragOverHandler = (e) => {
+  e.preventDefault();
+  dragOverlay.style.opacity = '1';
+  dragOverlay.style.pointerEvents = 'auto';
+};
 
-function disableGlobalDrag() {
-  dragOverHandler = (e) => {
-    e.preventDefault();
-    dragOverlay.style.opacity = '1';
-    dragOverlay.style.pointerEvents = 'auto';
-  };
-  dragLeaveHandler = (e) => {
-    e.preventDefault();
-    if (e.target === document.body || (e.clientX === 0 && e.clientY === 0)) {
-      dragOverlay.style.opacity = '0';
-      dragOverlay.style.pointerEvents = 'none';
-    }
-  };
-  dropHandler = (e) => {
-    e.preventDefault();
+const dragLeaveHandler = (e) => {
+  e.preventDefault();
+  if (e.target === document.body || (e.clientX === 0 && e.clientY === 0)) {
     dragOverlay.style.opacity = '0';
     dragOverlay.style.pointerEvents = 'none';
-    const files = e.dataTransfer.files;
-    Array.from(files).forEach(uploadFile);
-  };
+  }
+};
 
+const dropHandler = (e) => {
+  e.preventDefault();
+  dragOverlay.style.opacity = '0';
+  dragOverlay.style.pointerEvents = 'none';
+  const files = e.dataTransfer.files;
+  Array.from(files).forEach(uploadFile);
+};
+
+function disableGlobalDrag() {
   document.removeEventListener('dragover', dragOverHandler);
   document.removeEventListener('dragleave', dragLeaveHandler);
   document.removeEventListener('drop', dropHandler);
 }
 
 function enableGlobalDrag() {
+  // 先移除再添加，防止重复绑定
+  disableGlobalDrag();
   document.addEventListener('dragover', dragOverHandler);
   document.addEventListener('dragleave', dragLeaveHandler);
   document.addEventListener('drop', dropHandler);
