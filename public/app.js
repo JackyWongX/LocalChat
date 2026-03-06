@@ -3,30 +3,188 @@ window.addEventListener('error', (e) => {
   console.error('Unhandled error:', e.message || e.error, e.error || e);
 });
 
-const socket = io();
+// ─────────────────────────────────────────────
+// 鉴权模块
+// ─────────────────────────────────────────────
+const TOKEN_KEY = 'lc_auth_token';
+const TOKEN_EXP_KEY = 'lc_auth_exp';
+const TOKEN_TTL_MS = 72 * 60 * 60 * 1000; // 与服务器一致：72小时
 
-const messageInput = document.getElementById('messageInput');
-const sendButton = document.getElementById('sendButton');
-const messagesDiv = document.getElementById('messages');
-const nicknameInput = document.getElementById('nicknameInput');
-const setNicknameButton = document.getElementById('setNicknameButton');
-const dragOverlay = document.getElementById('dragOverlay');
-const imageModal = document.getElementById('imageModal');
-const modalImage = document.getElementById('modalImage');
-const closeModal = document.getElementById('closeModal');
-const zoomIn = document.getElementById('zoomIn');
-const zoomOut = document.getElementById('zoomOut');
-const zoomReset = document.getElementById('zoomReset');
-const contextMenu = document.getElementById('contextMenu');
-const deleteMessageBtn = document.getElementById('deleteMessageBtn');
+function getStoredToken() {
+  const token = localStorage.getItem(TOKEN_KEY);
+  const exp = parseInt(localStorage.getItem(TOKEN_EXP_KEY) || '0', 10);
+  if (!token || Date.now() > exp) {
+    localStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(TOKEN_EXP_KEY);
+    return null;
+  }
+  return token;
+}
+
+function storeToken(token) {
+  localStorage.setItem(TOKEN_KEY, token);
+  localStorage.setItem(TOKEN_EXP_KEY, String(Date.now() + TOKEN_TTL_MS));
+}
+
+function clearToken() {
+  localStorage.removeItem(TOKEN_KEY);
+  localStorage.removeItem(TOKEN_EXP_KEY);
+}
+
+function authHeaders() {
+  const token = getStoredToken();
+  return token ? { 'Authorization': `Bearer ${token}` } : {};
+}
+
+// ─────────────────────────────────────────────
+// 安全码弹窗逻辑
+// ─────────────────────────────────────────────
+const passcodeOverlay = document.getElementById('passcodeOverlay');
+const passcodeInput = document.getElementById('passcodeInput');
+const passcodeError = document.getElementById('passcodeError');
+const passcodeSubmit = document.getElementById('passcodeSubmit');
+
+function showPasscodeOverlay() {
+  passcodeOverlay.style.setProperty('display', 'flex', 'important');
+  passcodeInput.value = '';
+  passcodeError.classList.add('hidden');
+  passcodeError.textContent = '';
+  setTimeout(() => passcodeInput.focus(), 100);
+}
+
+function hidePasscodeOverlay() {
+  passcodeOverlay.style.setProperty('display', 'none', 'important');
+}
+
+async function submitPasscode() {
+  const passcode = passcodeInput.value;
+  if (!passcode) {
+    passcodeError.textContent = '请输入安全码';
+    passcodeError.classList.remove('hidden');
+    return;
+  }
+  passcodeSubmit.disabled = true;
+  passcodeSubmit.textContent = '验证中...';
+  passcodeError.classList.add('hidden');
+
+  try {
+    const res = await fetch('/auth', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ passcode })
+    });
+    const data = await res.json();
+    if (res.ok && data.token) {
+      storeToken(data.token);
+      hidePasscodeOverlay();
+      initApp();
+    } else {
+      passcodeError.textContent = data.error || '安全码错误';
+      passcodeError.classList.remove('hidden');
+      passcodeInput.value = '';
+      passcodeInput.focus();
+    }
+  } catch (err) {
+    passcodeError.textContent = '网络错误，请重试';
+    passcodeError.classList.remove('hidden');
+  } finally {
+    passcodeSubmit.disabled = false;
+    passcodeSubmit.textContent = '验证';
+  }
+}
+
+if (passcodeSubmit) {
+  passcodeSubmit.addEventListener('click', submitPasscode);
+}
+if (passcodeInput) {
+  passcodeInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') submitPasscode();
+  });
+}
+
+// ─────────────────────────────────────────────
+// 主应用初始化（鉴权通过后调用）
+// ─────────────────────────────────────────────
+let socket = null;
+let appInitialized = false;
+
+function initApp() {
+  if (appInitialized) return;
+  appInitialized = true;
+
+  const token = getStoredToken();
+  socket = io({ auth: { token } });
+
+  // Token 失效时（服务器重启后旧 token 失效）重新弹出验证框
+  socket.on('connect_error', (err) => {
+    if (err.message && (err.message.includes('Token') || err.message.includes('未授权'))) {
+      clearToken();
+      socket.disconnect();
+      appInitialized = false;
+      socket = null;
+      showPasscodeOverlay();
+    }
+  });
+
+  bindSocketEvents();
+  bindUIEvents();
+  document.addEventListener('DOMContentLoaded', () => {
+    initializeNickname();
+    enableGlobalDrag();
+  });
+  // 如果 DOMContentLoaded 已触发
+  if (document.readyState !== 'loading') {
+    initializeNickname();
+    enableGlobalDrag();
+  }
+}
+
+// ─────────────────────────────────────────────
+// 启动入口
+// ─────────────────────────────────────────────
+(function bootstrap() {
+  const token = getStoredToken();
+  if (token) {
+    initApp();
+  } else {
+    // 等待 DOM 加载完毕再显示弹窗
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', showPasscodeOverlay);
+    } else {
+      showPasscodeOverlay();
+    }
+  }
+})();
+
+
+// ─────────────────────────────────────────────
+// UI 元素（在 initApp 调用后访问）
+// ─────────────────────────────────────────────
+let messageInput, sendButton, messagesDiv, nicknameInput, setNicknameButton;
+let dragOverlay, imageModal, modalImage, closeModal, zoomIn, zoomOut, zoomReset;
+let contextMenu, deleteMessageBtn;
+
+function initDOMRefs() {
+  messageInput = document.getElementById('messageInput');
+  sendButton = document.getElementById('sendButton');
+  messagesDiv = document.getElementById('messages');
+  nicknameInput = document.getElementById('nicknameInput');
+  setNicknameButton = document.getElementById('setNicknameButton');
+  dragOverlay = document.getElementById('dragOverlay');
+  imageModal = document.getElementById('imageModal');
+  modalImage = document.getElementById('modalImage');
+  closeModal = document.getElementById('closeModal');
+  zoomIn = document.getElementById('zoomIn');
+  zoomOut = document.getElementById('zoomOut');
+  zoomReset = document.getElementById('zoomReset');
+  contextMenu = document.getElementById('contextMenu');
+  deleteMessageBtn = document.getElementById('deleteMessageBtn');
+}
+
 
 let currentNickname = '';
 const uploadPlaceholders = new Map();
 
-// Request notification permission on page load
-if ('Notification' in window && Notification.permission === 'default') {
-  Notification.requestPermission();
-}
 
 function showNotification(msg) {
   if ('Notification' in window && Notification.permission === 'granted' && document.hidden) {
@@ -63,49 +221,139 @@ function initializeNickname() {
     localStorage.setItem('chatNickname', storedNickname);
   }
   currentNickname = storedNickname;
-  nicknameInput.value = currentNickname;
-  nicknameInput.disabled = true;
-  setNicknameButton.textContent = '修改昵称';
-  socket.emit('set nickname', currentNickname);
+  if (nicknameInput) {
+    nicknameInput.value = currentNickname;
+    nicknameInput.disabled = true;
+  }
+  if (setNicknameButton) setNicknameButton.textContent = '修改昵称';
+  if (socket) socket.emit('set nickname', currentNickname);
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-  initializeNickname();
-
-  // Initialize drag and drop handlers
-  enableGlobalDrag();
+  // DOM refs 在鉴权通过后由 initApp 初始化，此处只是兜底
 });
 
-if (setNicknameButton) {
-  setNicknameButton.addEventListener('click', () => {
-    if (nicknameInput && nicknameInput.disabled) {
-      nicknameInput.disabled = false;
-      setNicknameButton.textContent = '保存';
-      nicknameInput.focus();
-    } else if (nicknameInput) {
-      const newNickname = nicknameInput.value.trim();
-      if (newNickname && newNickname !== currentNickname) {
-        currentNickname = newNickname;
-        localStorage.setItem('chatNickname', currentNickname);
-        socket.emit('set nickname', currentNickname);
+function bindUIEvents() {
+  initDOMRefs();
+
+  // 通知权限
+  if ('Notification' in window && Notification.permission === 'default') {
+    Notification.requestPermission();
+  }
+
+  if (setNicknameButton) {
+    setNicknameButton.addEventListener('click', () => {
+      if (nicknameInput && nicknameInput.disabled) {
+        nicknameInput.disabled = false;
+        setNicknameButton.textContent = '保存';
+        nicknameInput.focus();
+      } else if (nicknameInput) {
+        const newNickname = nicknameInput.value.trim();
+        if (newNickname && newNickname !== currentNickname) {
+          currentNickname = newNickname;
+          localStorage.setItem('chatNickname', currentNickname);
+          if (socket) socket.emit('set nickname', currentNickname);
+        }
+        nicknameInput.disabled = true;
+        setNicknameButton.textContent = '修改昵称';
       }
-      nicknameInput.disabled = true;
-      setNicknameButton.textContent = '修改昵称';
+    });
+  }
+
+  if (sendButton) sendButton.addEventListener('click', sendMessage);
+  if (messageInput) {
+    messageInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        sendMessage();
+      }
+    });
+    messageInput.addEventListener('paste', handlePaste);
+  }
+
+  if (closeModal) closeModal.addEventListener('click', () => {
+    imageModal.style.opacity = '0';
+    imageModal.style.pointerEvents = 'none';
+    resetImageView();
+    enableGlobalDrag();
+  });
+
+  if (imageModal) imageModal.addEventListener('click', (e) => {
+    if (e.target === imageModal) {
+      imageModal.style.opacity = '0';
+      imageModal.style.pointerEvents = 'none';
+      resetImageView();
+      enableGlobalDrag();
+    }
+  });
+
+  if (zoomIn) zoomIn.addEventListener('click', (e) => {
+    e.preventDefault(); e.stopPropagation();
+    currentZoom = Math.min(currentZoom * 1.2, 5);
+    updateImageTransform();
+  });
+
+  if (zoomOut) zoomOut.addEventListener('click', (e) => {
+    e.preventDefault(); e.stopPropagation();
+    currentZoom = Math.max(currentZoom / 1.2, 0.1);
+    updateImageTransform();
+  });
+
+  if (zoomReset) zoomReset.addEventListener('click', (e) => {
+    e.preventDefault(); e.stopPropagation();
+    resetImageView();
+  });
+
+  if (modalImage) {
+    modalImage.addEventListener('wheel', (e) => {
+      e.preventDefault(); e.stopPropagation();
+      currentZoom = e.deltaY < 0
+        ? Math.min(currentZoom * 1.1, 5)
+        : Math.max(currentZoom / 1.1, 0.1);
+      updateImageTransform();
+    });
+
+    modalImage.addEventListener('mousedown', (e) => {
+      e.preventDefault(); e.stopPropagation();
+      if (currentZoom > 1) {
+        isDragging = true;
+        dragStartX = e.clientX;
+        dragStartY = e.clientY;
+        modalImage.style.cursor = 'grabbing';
+      }
+    });
+  }
+
+  document.addEventListener('mousemove', (e) => {
+    if (isDragging) {
+      imageStartX += (e.clientX - dragStartX) / currentZoom;
+      imageStartY += (e.clientY - dragStartY) / currentZoom;
+      dragStartX = e.clientX;
+      dragStartY = e.clientY;
+      updateImageTransform();
+    }
+  });
+
+  document.addEventListener('mouseup', () => {
+    if (isDragging) {
+      isDragging = false;
+      if (modalImage) modalImage.style.cursor = currentZoom > 1 ? 'grab' : 'move';
+    }
+  });
+
+  if (deleteMessageBtn) deleteMessageBtn.addEventListener('click', () => {
+    if (currentMessageId && socket) {
+      socket.emit('delete message', currentMessageId);
+      hideContextMenu();
+    }
+  });
+
+  document.addEventListener('click', (e) => {
+    if (contextMenu && !contextMenu.contains(e.target)) {
+      hideContextMenu();
     }
   });
 }
-
-if (sendButton) sendButton.addEventListener('click', sendMessage);
-if (messageInput) {
-  messageInput.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      sendMessage();
-    }
-  });
-}
-
-if (messageInput) messageInput.addEventListener('paste', handlePaste);
 
 function handlePaste(e) {
   const items = e.clipboardData.items;
@@ -120,40 +368,43 @@ function handlePaste(e) {
 }
 
 function uploadImage(file) {
-  if (!currentNickname) {
-    initializeNickname(); // Ensure nickname is set before uploading
-  }
-  // Create a blob with a filename
+  if (!currentNickname) initializeNickname();
   const imageFile = new File([file], `pasted-image-${Date.now()}.png`, { type: file.type });
-
   const formData = new FormData();
   formData.append('file', imageFile);
 
   const xhr = new XMLHttpRequest();
   xhr.open('POST', '/upload');
+  // 携带鉴权头
+  const token = getStoredToken();
+  if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
 
   xhr.onload = () => {
+    if (xhr.status === 401 || xhr.status === 403) {
+      clearToken();
+      appInitialized = false;
+      if (socket) { socket.disconnect(); socket = null; }
+      showPasscodeOverlay();
+      return;
+    }
     if (xhr.status >= 200 && xhr.status < 300) {
       try {
         const data = JSON.parse(xhr.responseText);
-        socket.emit('image message', { ...data });
+        if (socket) socket.emit('image message', { ...data });
       } catch (error) {
         console.error('Upload failed:', error);
       }
     }
   };
-
   xhr.send(formData);
 }
 
 function sendMessage() {
-  const message = messageInput.value;
+  const message = messageInput ? messageInput.value : '';
   if (!message.trim()) return;
-  if (!currentNickname) {
-    initializeNickname(); // Ensure nickname is set before sending
-  }
-  socket.emit('chat message', message);
-  messageInput.value = '';
+  if (!currentNickname) initializeNickname();
+  if (socket) socket.emit('chat message', message);
+  if (messageInput) messageInput.value = '';
 }
 
 function generateUploadId() {
@@ -174,97 +425,105 @@ function linkify(text) {
 }
 
 function uploadFile(file) {
-  if (!currentNickname) {
-    initializeNickname(); // Ensure nickname is set before uploading
-  }
+  if (!currentNickname) initializeNickname();
   const uploadId = generateUploadId();
-  socket.emit('file upload started', {
-    uploadId,
-    fileName: file.name,
-    fileSize: file.size
-  });
+  if (socket) socket.emit('file upload started', { uploadId, fileName: file.name, fileSize: file.size });
 
   const formData = new FormData();
   formData.append('file', file);
 
   const xhr = new XMLHttpRequest();
   xhr.open('POST', '/upload');
+  // 携带鉴权头
+  const token = getStoredToken();
+  if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
 
   xhr.upload.onprogress = (event) => {
     if (!event.lengthComputable) return;
     const percent = Math.round((event.loaded / event.total) * 100);
-    socket.emit('file upload progress', { uploadId, percent });
+    if (socket) socket.emit('file upload progress', { uploadId, percent });
   };
 
   xhr.onload = () => {
+    if (xhr.status === 401 || xhr.status === 403) {
+      clearToken();
+      appInitialized = false;
+      if (socket) { socket.disconnect(); socket = null; }
+      showPasscodeOverlay();
+      return;
+    }
     if (xhr.status >= 200 && xhr.status < 300) {
       try {
         const data = JSON.parse(xhr.responseText);
-        socket.emit('file upload progress', { uploadId, percent: 100 });
-        socket.emit('file message', { ...data, uploadId });
+        if (data.error) {
+          // 服务器返回业务错误（如文件类型被拒绝）
+          if (socket) socket.emit('file upload failed', { uploadId, error: data.error });
+          return;
+        }
+        if (socket) {
+          socket.emit('file upload progress', { uploadId, percent: 100 });
+          socket.emit('file message', { ...data, uploadId });
+        }
       } catch (error) {
-        socket.emit('file upload failed', { uploadId, error: '文件响应解析失败' });
+        if (socket) socket.emit('file upload failed', { uploadId, error: '文件响应解析失败' });
       }
     } else {
-      socket.emit('file upload failed', { uploadId, error: '上传失败，请重试' });
+      // 尝试解析服务器错误信息
+      let errMsg = '上传失败，请重试';
+      try {
+        const errData = JSON.parse(xhr.responseText);
+        if (errData.error) errMsg = errData.error;
+      } catch (_) {}
+      if (socket) socket.emit('file upload failed', { uploadId, error: errMsg });
     }
   };
 
   xhr.onerror = () => {
-    socket.emit('file upload failed', { uploadId, error: '网络异常，上传失败' });
+    if (socket) socket.emit('file upload failed', { uploadId, error: '网络异常，上传失败' });
   };
 
   xhr.send(formData);
 }
 
-socket.on('chat message', (msg) => {
-  displayMessage(msg);
-  if (msg.nickname !== currentNickname) {
-    showNotification(msg);
-  }
-});
-
-socket.on('file message', (msg) => {
-  displayFileMessage(msg);
-  if (msg.nickname !== currentNickname) {
-    showNotification(msg);
-  }
-});
-
-socket.on('image message', (msg) => {
-  displayImageMessage(msg);
-  if (msg.nickname !== currentNickname) {
-    showNotification(msg);
-  }
-});
-
-socket.on('load messages', (messages) => {
-  messagesDiv.innerHTML = ''; // Clear existing messages
-  messages.forEach(msg => {
-    if (msg.type === 'file') {
-      displayFileMessage(msg);
-    } else if (msg.type === 'image') {
-      displayImageMessage(msg);
-    } else {
-      displayMessage(msg);
-    }
+function bindSocketEvents() {
+  socket.on('chat message', (msg) => {
+    displayMessage(msg);
+    if (msg.nickname !== currentNickname) showNotification(msg);
   });
-  scrollMessagesToBottom();
-});
 
-socket.on('file upload started', (payload) => {
-  renderUploadPlaceholder(payload);
-});
+  socket.on('file message', (msg) => {
+    displayFileMessage(msg);
+    if (msg.nickname !== currentNickname) showNotification(msg);
+  });
 
-socket.on('file upload progress', (payload) => {
-  updateUploadProgress(payload);
-});
+  socket.on('image message', (msg) => {
+    displayImageMessage(msg);
+    if (msg.nickname !== currentNickname) showNotification(msg);
+  });
 
-socket.on('file upload failed', (payload) => {
-  handleUploadFailure(payload);
-});
+  socket.on('load messages', (msgs) => {
+    if (!messagesDiv) initDOMRefs();
+    messagesDiv.innerHTML = '';
+    msgs.forEach(msg => {
+      if (msg.type === 'file') displayFileMessage(msg);
+      else if (msg.type === 'image') displayImageMessage(msg);
+      else displayMessage(msg);
+    });
+    scrollMessagesToBottom();
+  });
+
+  socket.on('file upload started', renderUploadPlaceholder);
+  socket.on('file upload progress', updateUploadProgress);
+  socket.on('file upload failed', handleUploadFailure);
+
+  socket.on('message deleted', (messageId) => {
+    const el = document.querySelector(`[data-message-id="${messageId}"]`);
+    if (el) el.remove();
+  });
+}
 
 // 在线用户显示已移除 — 不再处理 'update online users' 事件
+
 
 function displayMessage(msg) {
   const element = createTextMessageElement(msg);
@@ -644,7 +903,7 @@ function enableGlobalDrag() {
 }
 
 function updateImageTransform() {
-  modalImage.style.transform = `scale(${currentZoom}) translate(${imageStartX}px, ${imageStartY}px)`;
+  if (modalImage) modalImage.style.transform = `scale(${currentZoom}) translate(${imageStartX}px, ${imageStartY}px)`;
 }
 
 function resetImageView() {
@@ -654,86 +913,18 @@ function resetImageView() {
   updateImageTransform();
 }
 
-if (closeModal) closeModal.addEventListener('click', () => {
-  imageModal.style.opacity = '0';
-  imageModal.style.pointerEvents = 'none';
-  resetImageView();
-  enableGlobalDrag();
-});
-
-if (imageModal) imageModal.addEventListener('click', (e) => {
-  if (e.target === imageModal) {
-    imageModal.style.opacity = '0';
-    imageModal.style.pointerEvents = 'none';
-    resetImageView();
-    enableGlobalDrag();
-  }
-});
-
-if (zoomIn) zoomIn.addEventListener('click', (e) => {
-  e.preventDefault();
-  e.stopPropagation();
-  currentZoom = Math.min(currentZoom * 1.2, 5);
-  updateImageTransform();
-});
-
-if (zoomOut) zoomOut.addEventListener('click', (e) => {
-  e.preventDefault();
-  e.stopPropagation();
-  currentZoom = Math.max(currentZoom / 1.2, 0.1);
-  updateImageTransform();
-});
-
-if (zoomReset) zoomReset.addEventListener('click', (e) => {
-  e.preventDefault();
-  e.stopPropagation();
-  resetImageView();
-});
-
-if (modalImage) {
-  modalImage.addEventListener('wheel', (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (e.deltaY < 0) {
-      currentZoom = Math.min(currentZoom * 1.1, 5);
-    } else {
-      currentZoom = Math.max(currentZoom / 1.1, 0.1);
-    }
-    updateImageTransform();
-  });
-
-  modalImage.addEventListener('mousedown', (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (currentZoom > 1) {
-      isDragging = true;
-      dragStartX = e.clientX;
-      dragStartY = e.clientY;
-      modalImage.style.cursor = 'grabbing';
-    }
-  });
-}
-
-document.addEventListener('mousemove', (e) => {
-  if (isDragging) {
-    const deltaX = e.clientX - dragStartX;
-    const deltaY = e.clientY - dragStartY;
-    imageStartX += deltaX / currentZoom;
-    imageStartY += deltaY / currentZoom;
-    dragStartX = e.clientX;
-    dragStartY = e.clientY;
-    updateImageTransform();
-  }
-});
-
-document.addEventListener('mouseup', () => {
-  if (isDragging) {
-    isDragging = false;
-    modalImage.style.cursor = currentZoom > 1 ? 'grab' : 'move';
-  }
-});
+// ─────────────────────────────────────────────
+// 图片缩放 / 拖拽状态变量
+// ─────────────────────────────────────────────
+let currentZoom = 1;
+let imageStartX = 0;
+let imageStartY = 0;
+let isDragging = false;
+let dragStartX = 0;
+let dragStartY = 0;
 
 function openImageModal(src) {
+  if (!modalImage || !imageModal) return;
   modalImage.src = src;
   resetImageView();
   imageModal.style.opacity = '1';
@@ -742,12 +933,15 @@ function openImageModal(src) {
   disableGlobalDrag();
 }
 
-// Context menu functionality
+// ─────────────────────────────────────────────
+// 右键菜单
+// ─────────────────────────────────────────────
 let currentMessageId = null;
 
 function showContextMenu(e, messageId) {
   e.preventDefault();
   currentMessageId = messageId;
+  if (!contextMenu) return;
   contextMenu.style.left = `${e.clientX}px`;
   contextMenu.style.top = `${e.clientY}px`;
   contextMenu.style.opacity = '1';
@@ -755,27 +949,9 @@ function showContextMenu(e, messageId) {
 }
 
 function hideContextMenu() {
+  if (!contextMenu) return;
   contextMenu.style.opacity = '0';
   contextMenu.style.pointerEvents = 'none';
   currentMessageId = null;
 }
 
-if (deleteMessageBtn) deleteMessageBtn.addEventListener('click', () => {
-  if (currentMessageId) {
-    socket.emit('delete message', currentMessageId);
-    hideContextMenu();
-  }
-});
-
-document.addEventListener('click', (e) => {
-  if (!contextMenu.contains(e.target)) {
-    hideContextMenu();
-  }
-});
-
-socket.on('message deleted', (messageId) => {
-  const messageElement = document.querySelector(`[data-message-id="${messageId}"]`);
-  if (messageElement) {
-    messageElement.remove();
-  }
-});

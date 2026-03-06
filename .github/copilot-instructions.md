@@ -1,17 +1,9 @@
-- [x] Verify that the copilot-instructions.md file in the .github directory is created.
+# 项目开发指南
 
-- [x] Clarify Project Requirements
-
-- [x] Scaffold the Project
-
-- [x] Customize the Project
-
-- [x] Install Required Extensions
-
-- [x] Compile the Project
-
-- [x] Create and Run Task
-
-- [x] Launch the Project
-
-- [x] Ensure Documentation is Complete
+## 核心开发指令
+- **语言要求**：使用中文回答和解释，代码注释必须使用中文。
+- **工作流程**：
+  1. 收到需求后进行详细分析。
+  2. 列出合理的 TODO 清单。
+  3. 逐条完成并同步更新清单状态。
+  4. 完成后检查代码，确保无语法错误并满足所有需求。

@@ -154,6 +154,16 @@ pids
 # TernJS port file
 .tern-port
 
+# ─── 安全文件（绝不提交到版本控制）───
+# 加密密钥（丢失则无法解密历史数据，请单独备份）
+data/secret.key
+# SSL 证书私钥
+key.pem
+cert.pem
+# 聊天数据和上传文件（服务器本地存储）
+data/messages.json
+data/files/
+
 # VS Code
 .vscode/
 

@@ -146,5 +146,28 @@
 
   <script src="/socket.io/socket.io.js"></script>
   <script src="app.js"></script>
+
+  <!-- 安全码验证弹窗 -->
+  <div id="passcodeOverlay" class="fixed inset-0 z-50 flex items-center justify-center" style="background: rgba(0,0,0,0.7); display:none !important;">
+    <div class="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-sm mx-4">
+      <div class="text-center mb-6">
+        <div class="text-4xl mb-3">🔐</div>
+        <h2 class="text-xl font-bold text-gray-800">聊天室验证</h2>
+        <p class="text-sm text-gray-500 mt-1">请输入安全码以继续访问</p>
+      </div>
+      <input
+        type="password"
+        id="passcodeInput"
+        class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-center text-lg tracking-widest mb-3"
+        placeholder="输入安全码"
+        autocomplete="current-password"
+      />
+      <p id="passcodeError" class="text-red-500 text-sm text-center mb-3 hidden"></p>
+      <button
+        id="passcodeSubmit"
+        class="w-full bg-blue-500 hover:bg-blue-600 text-white font-semibold py-3 rounded-lg transition duration-200"
+      >验证</button>
+    </div>
+  </div>
 </body>
 </html>
