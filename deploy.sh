@@ -21,7 +21,10 @@ log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
 
 # ─── 配置变量（按需修改）───
 APP_NAME="localchat"
-APP_USER="root"                        # 脚本以 root 权限运行，应用目录归 root 所有
+# 自动检测真实用户（sudo 调用时取 SUDO_USER，否则取当前用户）
+# 部署完成后所有文件归该用户所有，后续 start.sh / stop.sh 无需 sudo
+APP_USER="${SUDO_USER:-$(whoami)}"
+APP_GROUP="$(id -gn "$APP_USER" 2>/dev/null || echo "$APP_USER")"
 NODE_VERSION="20"                      # Node.js LTS 版本
 HTTPS_PORT="3443"
 HTTP_PORT="3001"
@@ -141,7 +144,9 @@ fi
 # 步骤 6：配置文件权限
 # ═══════════════════════════════════════════════
 log_info "步骤 6/8：配置目录权限..."
-chown -R "$APP_USER:$APP_USER" "$APP_DIR"
+# 将所有应用文件归还给真实用户，后续 start.sh/stop.sh 无需 sudo
+mkdir -p "$APP_DIR/logs"
+chown -R "$APP_USER:$APP_GROUP" "$APP_DIR"
 chmod 700 "$APP_DIR/data"
 if [[ -f "$APP_DIR/key.pem" ]]; then
   chmod 600 "$APP_DIR/key.pem"
@@ -301,22 +306,22 @@ module.exports = {
     env: {
       NODE_ENV: 'production'
     },
-    // 日志配置
-    out_file: '/var/log/${APP_NAME}/out.log',
-    error_file: '/var/log/${APP_NAME}/error.log',
+    // 日志写到应用目录，普通用户可读写
+    out_file: '${APP_DIR}/logs/out.log',
+    error_file: '${APP_DIR}/logs/error.log',
     log_date_format: 'YYYY-MM-DD HH:mm:ss',
     merge_logs: true
   }]
 };
 EOF
 
-# 创建日志目录
-mkdir -p "/var/log/${APP_NAME}"
-chown "$APP_USER:$APP_USER" "/var/log/${APP_NAME}"
-chown "$APP_USER:$APP_USER" "$APP_DIR/ecosystem.config.js"
+# 日志目录已在步骤6创建并归真实用户所有
+chown "$APP_USER:$APP_GROUP" "$APP_DIR/ecosystem.config.js"
 
-# 配置 PM2 开机自启（以 root 运行，因为 Node 需要交互输入安全码）
-pm2 startup systemd -u root --hp /root > /dev/null 2>&1 || true
+# 配置 PM2 开机自启（以真实用户身份运行，无需 sudo 启停）
+APP_USER_HOME=$(getent passwd "$APP_USER" | cut -d: -f6 2>/dev/null || echo "/home/$APP_USER")
+su -c "pm2 startup systemd -u \"$APP_USER\" --hp \"$APP_USER_HOME\"" root 2>/dev/null || \
+  pm2 startup systemd -u "$APP_USER" --hp "$APP_USER_HOME" > /dev/null 2>&1 || true
 
 log_ok "PM2 配置完成"
 
@@ -324,14 +329,15 @@ log_ok "PM2 配置完成"
 # 配置 Logrotate 日志轮转
 # ═══════════════════════════════════════════════
 cat > "/etc/logrotate.d/${APP_NAME}" <<EOF
-/var/log/${APP_NAME}/*.log {
+${APP_DIR}/logs/*.log {
     daily
     rotate 14
     compress
     delaycompress
     missingok
     notifempty
-    create 640 root root
+    su ${APP_USER} ${APP_GROUP}
+    create 640 ${APP_USER} ${APP_GROUP}
 }
 EOF
 
@@ -344,9 +350,10 @@ echo -e "${GREEN}   ✅ 部署完成！${NC}"
 echo -e "${GREEN}═══════════════════════════════════════════════${NC}"
 echo ""
 echo -e "  应用目录：   ${BLUE}${APP_DIR}${NC}"
+echo -e "  文件归属：   ${BLUE}${APP_USER}:${APP_GROUP}${NC}（后续操作无需 sudo）"
 echo -e "  配置文件：   ${BLUE}${APP_DIR}/config.json${NC}"
 echo -e "  SSL 证书：   ${BLUE}${APP_DIR}/key.pem${NC} / ${BLUE}${APP_DIR}/cert.pem${NC}"
-echo -e "  日志目录：   ${BLUE}/var/log/${APP_NAME}/${NC}"
+echo -e "  日志目录：   ${BLUE}${APP_DIR}/logs/${NC}"
 echo ""
 echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo -e "${YELLOW}  下一步操作：${NC}"
@@ -355,13 +362,13 @@ echo ""
 echo -e "  1. 编辑 config.json 添加您的域名/IP 白名单："
 echo -e "     ${BLUE}nano ${APP_DIR}/config.json${NC}"
 echo ""
-echo -e "  2. 首次启动服务（需要在终端交互输入安全码）："
-echo -e "     ${BLUE}cd ${APP_DIR} && node server.js${NC}"
+echo -e "  2. 首次启动服务（交互输入安全码，无需 sudo）："
+echo -e "     ${BLUE}./start.sh${NC}"
 echo ""
-echo -e "     ⚠️  安全码输入后请记住，这是进入聊天室的唯一凭证。"
-echo -e "     ⚠️  data/secret.key 是加密密钥文件，请妥善备份！"
+echo -e "  3. 停止服务（无需 sudo）："
+echo -e "     ${BLUE}./stop.sh${NC}"
 echo ""
-echo -e "  3. 确认运行正常后，使用 PM2 后台管理："
+echo -e "  4. 或使用 PM2 后台管理（以 ${APP_USER} 身份运行）："
 echo -e "     ${BLUE}cd ${APP_DIR} && pm2 start ecosystem.config.js${NC}"
 echo -e "     ${BLUE}pm2 save${NC}           # 保存进程列表（开机自启）"
 echo -e "     ${BLUE}pm2 logs ${APP_NAME}${NC}  # 查看日志"

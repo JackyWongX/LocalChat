@@ -1,12 +1,12 @@
 #!/bin/bash
 # ═══════════════════════════════════════════════
-#  LocalChat 后台启动脚本
-#  用法：chmod +x start.sh && sudo ./start.sh
-#  效果：交互输入安全码 → 进程转入后台 → 日志写入文件
+#  LocalChat 后台启动脚本（无需 sudo）
+#  用法：chmod +x start.sh && ./start.sh
+#  效果：交互输入安全码 → 进程转入后台 → 日志写入 logs/app.log
 # ═══════════════════════════════════════════════
 
 APP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-LOG_DIR="/var/log/localchat"
+LOG_DIR="${APP_DIR}/logs"
 LOG_FILE="${LOG_DIR}/app.log"
 PID_FILE="${APP_DIR}/localchat.pid"
 
@@ -22,7 +22,7 @@ if [[ -f "$PID_FILE" ]]; then
   OLD_PID=$(cat "$PID_FILE")
   if kill -0 "$OLD_PID" 2>/dev/null; then
     echo -e "${YELLOW}[警告] LocalChat 已在运行，PID: ${OLD_PID}${NC}"
-    echo -e "       如需重启，请先执行：${BLUE}sudo ./stop.sh${NC}"
+    echo -e "       如需重启，请先执行：${BLUE}./stop.sh${NC}"
     exit 1
   else
     # PID 文件残留但进程不存在，清理掉
@@ -71,7 +71,7 @@ if kill -0 "$PID" 2>/dev/null; then
   echo -e "     日志：${BLUE}${LOG_FILE}${NC}"
   echo ""
   echo -e "  实时查看日志：${BLUE}tail -f ${LOG_FILE}${NC}"
-  echo -e "  停止服务：    ${BLUE}sudo ./stop.sh${NC}  或  ${BLUE}sudo kill ${PID}${NC}"
+  echo -e "  停止服务：    ${BLUE}./stop.sh${NC}"
   echo ""
 else
   echo -e "${RED}[错误] 服务启动失败，请检查日志：${LOG_FILE}${NC}"

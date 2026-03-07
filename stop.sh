@@ -1,7 +1,7 @@
 #!/bin/bash
 # ═══════════════════════════════════════════════
-#  LocalChat 停止脚本
-#  用法：sudo ./stop.sh
+#  LocalChat 停止脚本（无需 sudo）
+#  用法：./stop.sh
 # ═══════════════════════════════════════════════
 
 APP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

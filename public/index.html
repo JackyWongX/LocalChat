@@ -6,8 +6,12 @@
   <title>局域网聊天室</title>
   <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
   <style>
-    body {
+    html {
       background: linear-gradient(135deg, #f0e6ff 0%, #e6ccff 100%);
+      min-height: 100%;
+    }
+    body {
+      background: transparent;
       min-height: 100vh;
     }
     .chat-container {
@@ -87,8 +91,8 @@
     }
   </style>
 </head>
-<body class="h-screen overflow-hidden px-4 sm:px-8 py-6 sm:py-10">
-  <div class="chat-container w-full max-w-4xl mx-auto h-full flex flex-col">
+<body class="h-screen px-4 sm:px-8 py-6 sm:py-10">
+<div class="chat-container overflow-hidden w-full max-w-4xl mx-auto h-full flex flex-col">
 
     <!-- Header: 昵称 一行显示，右侧显示在线用户（桌面可见，移动隐藏） -->
     <header class="flex items-center justify-between bg-white bg-opacity-20 rounded-lg p-3 sm:p-4 backdrop-blur-sm mb-4">
