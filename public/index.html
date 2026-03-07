@@ -144,10 +144,7 @@
     <button id="deleteMessageBtn" class="w-full text-left px-4 py-2 hover:bg-gray-100 text-gray-700">删除消息</button>
   </div>
 
-  <script src="/socket.io/socket.io.js"></script>
-  <script src="app.js"></script>
-
-  <!-- 安全码验证弹窗 -->
+  <!-- 安全码验证弹窗（必须在 app.js 之前，否则脚本执行时元素尚未解析）-->
   <div id="passcodeOverlay" class="fixed inset-0 z-50 flex items-center justify-center" style="background: rgba(0,0,0,0.7); display:none !important;">
     <div class="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-sm mx-4">
       <div class="text-center mb-6">
@@ -169,5 +166,8 @@
       >验证</button>
     </div>
   </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="app.js"></script>
 </body>
 </html>

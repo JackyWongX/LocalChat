@@ -12,7 +12,6 @@ const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
-const readline = require('readline');
 const { Readable } = require('stream');
 const { initEncryptionKey, encryptText, decryptText, createEncryptStream, createDecryptStream } = require('./crypto-utils');
 
@@ -39,6 +38,14 @@ let PASSCODE = '';
 const JWT_SECRET = crypto.randomBytes(64).toString('hex');
 
 async function promptPasscode() {
+  // 支持通过环境变量传入安全码（用于后台/守护进程启动）
+  if (process.env.LOCALCHAT_PASSCODE) {
+    const passcode = process.env.LOCALCHAT_PASSCODE;
+    delete process.env.LOCALCHAT_PASSCODE; // 立即清除，避免子进程继承或被读取
+    console.log('[安全] 已从环境变量读取安全码');
+    return passcode;
+  }
+
   return new Promise((resolve) => {
     process.stdout.write('请输入聊天室安全码（输入不可见）：');
 
@@ -117,7 +124,8 @@ const corsOptions = {
     if (config.allowedOrigins.length === 0 || config.allowedOrigins.includes(origin)) {
       return callback(null, true);
     }
-    callback(new Error('CORS 拒绝访问'));
+    console.warn(`[CORS] 拒绝来源：${origin}`);
+    callback(null, false);
   },
   credentials: true
 };
@@ -343,6 +351,13 @@ app.post('/auth', authLimiter, (req, res) => {
   clearAuthFailure(ip);
   const token = jwt.sign({ auth: true }, JWT_SECRET, { expiresIn: '72h' });
   return res.json({ token });
+});
+
+// ─────────────────────────────────────────────
+// Token 验证接口（页面加载时主动校验缓存 token 是否仍有效）
+// ─────────────────────────────────────────────
+app.get('/verify', authMiddleware, (req, res) => {
+  res.json({ ok: true });
 });
 
 // ─────────────────────────────────────────────

@@ -1,6 +1,3 @@
 {
-  "allowedOrigins": [
-    "https://localhost:3443",
-    "http://localhost:3001"
-  ]
+  "allowedOrigins": []
 }

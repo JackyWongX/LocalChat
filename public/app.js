@@ -31,11 +31,6 @@ function clearToken() {
   localStorage.removeItem(TOKEN_EXP_KEY);
 }
 
-function authHeaders() {
-  const token = getStoredToken();
-  return token ? { 'Authorization': `Bearer ${token}` } : {};
-}
-
 // ─────────────────────────────────────────────
 // 安全码弹窗逻辑
 // ─────────────────────────────────────────────
@@ -107,6 +102,7 @@ if (passcodeInput) {
 // ─────────────────────────────────────────────
 let socket = null;
 let appInitialized = false;
+let uiEventsBound = false; // 防止重复绑定 DOM 事件监听器
 
 function initApp() {
   if (appInitialized) return;
@@ -128,41 +124,63 @@ function initApp() {
 
   bindSocketEvents();
   bindUIEvents();
-  document.addEventListener('DOMContentLoaded', () => {
-    initializeNickname();
-    enableGlobalDrag();
-  });
-  // 如果 DOMContentLoaded 已触发
-  if (document.readyState !== 'loading') {
-    initializeNickname();
-    enableGlobalDrag();
-  }
+  // 脚本在 <body> 底部加载，DOM 必定已就绪，直接调用
+  initializeNickname();
+  enableGlobalDrag();
 }
 
 // ─────────────────────────────────────────────
-// 启动入口
-// ─────────────────────────────────────────────
-(function bootstrap() {
-  const token = getStoredToken();
-  if (token) {
-    initApp();
-  } else {
-    // 等待 DOM 加载完毕再显示弹窗
-    if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', showPasscodeOverlay);
-    } else {
-      showPasscodeOverlay();
-    }
-  }
-})();
-
-
-// ─────────────────────────────────────────────
-// UI 元素（在 initApp 调用后访问）
+// UI 元素（声明在 bootstrap 之前，避免暂时性死区 TDZ）
 // ─────────────────────────────────────────────
 let messageInput, sendButton, messagesDiv, nicknameInput, setNicknameButton;
 let dragOverlay, imageModal, modalImage, closeModal, zoomIn, zoomOut, zoomReset;
 let contextMenu, deleteMessageBtn;
+
+let currentNickname = '';
+const uploadPlaceholders = new Map();
+
+// 图片缩放 / 拖拽状态变量
+let currentZoom = 1;
+let imageStartX = 0;
+let imageStartY = 0;
+let isDragging = false;
+let dragStartX = 0;
+let dragStartY = 0;
+
+// ─────────────────────────────────────────────
+// 启动入口
+// ─────────────────────────────────────────────
+
+// 向服务器主动校验缓存的 token 是否仍有效（防止服务器重启后旧 token 失效）
+async function verifyTokenOnServer(token) {
+  try {
+    const res = await fetch('/verify', {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    return res.ok;
+  } catch (_) {
+    // 网络异常时乐观处理，让后续 Socket.IO connect_error 内层先尝试
+    return true;
+  }
+}
+
+(function bootstrap() {
+  const token = getStoredToken();
+  if (token) {
+    // 主动向服务器验证缓存的 token，校验失败则弹窗要求重新输入安全码
+    verifyTokenOnServer(token).then((valid) => {
+      if (valid) {
+        initApp();
+      } else {
+        clearToken();
+        showPasscodeOverlay();
+      }
+    });
+  } else {
+    showPasscodeOverlay();
+  }
+})();
+
 
 function initDOMRefs() {
   messageInput = document.getElementById('messageInput');
@@ -180,11 +198,6 @@ function initDOMRefs() {
   contextMenu = document.getElementById('contextMenu');
   deleteMessageBtn = document.getElementById('deleteMessageBtn');
 }
-
-
-let currentNickname = '';
-const uploadPlaceholders = new Map();
-
 
 function showNotification(msg) {
   if ('Notification' in window && Notification.permission === 'granted' && document.hidden) {
@@ -229,11 +242,9 @@ function initializeNickname() {
   if (socket) socket.emit('set nickname', currentNickname);
 }
 
-document.addEventListener('DOMContentLoaded', () => {
-  // DOM refs 在鉴权通过后由 initApp 初始化，此处只是兜底
-});
-
 function bindUIEvents() {
+  if (uiEventsBound) return; // 防止重新鉴权时重复绑定
+  uiEventsBound = true;
   initDOMRefs();
 
   // 通知权限
@@ -422,6 +433,67 @@ function linkify(text) {
   return escapedText.replace(urlRegex, (url) => {
     return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="text-blue-500 hover:underline break-all">${url}</a>`;
   });
+}
+
+// 使用认证Token加载图片（解决401错误）
+async function loadImageWithAuth(filePath) {
+  try {
+    const token = getStoredToken();
+    const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
+    const response = await fetch(filePath, { headers });
+
+    if (response.status === 401 || response.status === 403) {
+      clearToken();
+      appInitialized = false;
+      if (socket) { socket.disconnect(); socket = null; }
+      showPasscodeOverlay();
+      return null;
+    }
+
+    if (!response.ok) {
+      console.error(`图片加载失败: ${response.status}`);
+      return null;
+    }
+
+    const blob = await response.blob();
+    return URL.createObjectURL(blob);
+  } catch (error) {
+    console.error('图片加载异常:', error);
+    return null;
+  }
+}
+
+// 使用认证Token下载文件（解决401错误）
+async function downloadFileWithAuth(downloadUrl, fileName) {
+  try {
+    const token = getStoredToken();
+    const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
+    const response = await fetch(downloadUrl, { headers });
+
+    if (response.status === 401 || response.status === 403) {
+      clearToken();
+      appInitialized = false;
+      if (socket) { socket.disconnect(); socket = null; }
+      showPasscodeOverlay();
+      return;
+    }
+
+    if (!response.ok) {
+      console.error(`文件下载失败: ${response.status}`);
+      return;
+    }
+
+    const blob = await response.blob();
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = fileName || '下载文件';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(link.href);
+  } catch (error) {
+    console.error('文件下载异常:', error);
+  }
 }
 
 function uploadFile(file) {
@@ -645,11 +717,21 @@ function createImageMessageElement(msg) {
 
   messageDiv.appendChild(headerDiv);
 
-  // 图片
+  // 图片（使用认证Token加载）
   const img = document.createElement('img');
-  img.src = msg.filePath;
   img.className = 'max-w-full h-auto rounded cursor-pointer mt-1';
-  img.onclick = () => openImageModal(msg.filePath);
+  img.style.opacity = '0.5';
+  img.style.pointerEvents = 'none';
+
+  loadImageWithAuth(msg.filePath).then((blobUrl) => {
+    if (blobUrl) {
+      img.src = blobUrl;
+      img.style.opacity = '1';
+      img.style.pointerEvents = 'auto';
+      img.onclick = () => openImageModal(msg.filePath);
+    }
+  });
+
   messageDiv.appendChild(img);
 
   container.appendChild(messageDiv);
@@ -743,14 +825,15 @@ function createFileMessageElement(msg) {
   leftDiv.appendChild(metaDiv);
   tile.appendChild(leftDiv);
 
-  const link = document.createElement('a');
+  const downloadBtn = document.createElement('button');
   const downloadHref = msg.downloadPath || msg.filePath;
-  link.href = downloadHref;
-  // 移除 target="_blank"，因为它在某些浏览器中会导致下载时出现“网络问题”
-  // 同时由于服务器已经设置了 Content-Disposition，浏览器会自动处理下载
-  link.textContent = '下载';
-  link.className = 'text-xs bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded-full transition duration-200 ml-2';
-  tile.appendChild(link);
+  downloadBtn.textContent = '下载';
+  downloadBtn.className = 'text-xs bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded-full transition duration-200 ml-2';
+  downloadBtn.onclick = (e) => {
+    e.preventDefault();
+    downloadFileWithAuth(downloadHref, msg.fileName);
+  };
+  tile.appendChild(downloadBtn);
 
   wrapper.appendChild(tile);
 
@@ -790,7 +873,7 @@ function formatTimestamp(timestamp) {
 }
 
 function scrollMessagesToBottom() {
-  messagesDiv.scrollTop = messagesDiv.scrollHeight;
+  if (messagesDiv) messagesDiv.scrollTop = messagesDiv.scrollHeight;
 }
 
 function renderUploadPlaceholder(payload) {
@@ -913,24 +996,19 @@ function resetImageView() {
   updateImageTransform();
 }
 
-// ─────────────────────────────────────────────
-// 图片缩放 / 拖拽状态变量
-// ─────────────────────────────────────────────
-let currentZoom = 1;
-let imageStartX = 0;
-let imageStartY = 0;
-let isDragging = false;
-let dragStartX = 0;
-let dragStartY = 0;
-
-function openImageModal(src) {
+async function openImageModal(src) {
   if (!modalImage || !imageModal) return;
-  modalImage.src = src;
-  resetImageView();
-  imageModal.style.opacity = '1';
-  imageModal.style.pointerEvents = 'auto';
-  modalImage.style.cursor = 'move';
-  disableGlobalDrag();
+
+  // 加载图片（使用认证Token）
+  const blobUrl = await loadImageWithAuth(src);
+  if (blobUrl) {
+    modalImage.src = blobUrl;
+    resetImageView();
+    imageModal.style.opacity = '1';
+    imageModal.style.pointerEvents = 'auto';
+    modalImage.style.cursor = 'move';
+    disableGlobalDrag();
+  }
 }
 
 // ─────────────────────────────────────────────
