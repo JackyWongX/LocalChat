@@ -85,38 +85,77 @@ function decryptText(encoded, key) {
   return decrypted.toString('utf8');
 }
 
+function decryptFileBufferLegacy(buffer, key) {
+  if (!Buffer.isBuffer(buffer) || buffer.length < 28) {
+    throw new Error('旧格式文件数据无效');
+  }
+  const iv = buffer.slice(0, 12);
+  const authTag = buffer.slice(12, 28);
+  const ciphertext = buffer.slice(28);
+  const decipher = crypto.createDecipheriv(ALGORITHM, key, iv);
+  decipher.setAuthTag(authTag);
+  return Buffer.concat([decipher.update(ciphertext), decipher.final()]);
+}
+
+function decryptFileBufferStreamFormat(buffer, key) {
+  if (!Buffer.isBuffer(buffer) || buffer.length < 28) {
+    throw new Error('新格式文件数据无效');
+  }
+  const iv = buffer.slice(0, 12);
+  const authTag = buffer.slice(buffer.length - 16);
+  const ciphertext = buffer.slice(12, buffer.length - 16);
+  const decipher = crypto.createDecipheriv(ALGORITHM, key, iv);
+  decipher.setAuthTag(authTag);
+  return Buffer.concat([decipher.update(ciphertext), decipher.final()]);
+}
+
+function decryptFileBuffer(buffer, key) {
+  try {
+    return decryptFileBufferLegacy(buffer, key);
+  } catch (_) {
+    return decryptFileBufferStreamFormat(buffer, key);
+  }
+}
+
 /**
  * 创建文件加密 Transform 流
- * 格式：[4字节IV长度][12字节IV][16字节authTag][加密数据]
- * 注意：GCM 需要收集完整数据才能获取 authTag，此处用 Buffer 收集后一次性输出
+ * 格式：[12字节IV][加密数据][16字节authTag]
+ * 允许边读边写，避免大文件时将完整内容缓存在内存中。
  * @param {Buffer} key 32 字节密钥
  * @returns {Transform}
  */
 function createEncryptStream(key) {
   const iv = crypto.randomBytes(12);
   const cipher = crypto.createCipheriv(ALGORITHM, key, iv);
-  const chunks = [];
   let headerWritten = false;
 
   return new Transform({
     transform(chunk, encoding, callback) {
-      chunks.push(cipher.update(chunk));
-      callback();
+      try {
+        if (!headerWritten) {
+          this.push(iv);
+          headerWritten = true;
+        }
+        const encryptedChunk = cipher.update(chunk);
+        if (encryptedChunk.length > 0) {
+          this.push(encryptedChunk);
+        }
+        callback();
+      } catch (err) {
+        callback(err);
+      }
     },
     flush(callback) {
       try {
-        chunks.push(cipher.final());
-        const authTag = cipher.getAuthTag();
-        // 写入头部：IV(12字节) + AuthTag(16字节)
         if (!headerWritten) {
-          this.push(iv);         // 12字节
-          this.push(authTag);    // 16字节
+          this.push(iv);
           headerWritten = true;
         }
-        // 写入加密数据
-        for (const chunk of chunks) {
-          this.push(chunk);
+        const finalChunk = cipher.final();
+        if (finalChunk.length > 0) {
+          this.push(finalChunk);
         }
+        this.push(cipher.getAuthTag());
         callback();
       } catch (err) {
         callback(err);
@@ -127,37 +166,43 @@ function createEncryptStream(key) {
 
 /**
  * 创建文件解密 Transform 流
- * 格式：[12字节IV][16字节authTag][加密数据]
+ * 格式：[12字节IV][加密数据][16字节authTag]
  * @param {Buffer} key 32 字节密钥
  * @returns {Transform}
  */
 function createDecryptStream(key) {
-  const HEADER_SIZE = 28; // 12(IV) + 16(authTag)
+  const IV_SIZE = 12;
+  const AUTH_TAG_SIZE = 16;
   let headerBuffer = Buffer.alloc(0);
   let headerParsed = false;
   let decipher = null;
+  let trailingBuffer = Buffer.alloc(0);
 
   return new Transform({
     transform(chunk, encoding, callback) {
       try {
         if (!headerParsed) {
-          // 积累头部数据
           headerBuffer = Buffer.concat([headerBuffer, chunk]);
-          if (headerBuffer.length >= HEADER_SIZE) {
-            const iv = headerBuffer.slice(0, 12);
-            const authTag = headerBuffer.slice(12, 28);
-            const remaining = headerBuffer.slice(HEADER_SIZE);
+          if (headerBuffer.length >= IV_SIZE) {
+            const iv = headerBuffer.slice(0, IV_SIZE);
+            const remaining = headerBuffer.slice(IV_SIZE);
 
             decipher = crypto.createDecipheriv(ALGORITHM, key, iv);
-            decipher.setAuthTag(authTag);
             headerParsed = true;
-
-            if (remaining.length > 0) {
-              this.push(decipher.update(remaining));
-            }
+            trailingBuffer = remaining;
           }
         } else {
-          this.push(decipher.update(chunk));
+          trailingBuffer = Buffer.concat([trailingBuffer, chunk]);
+        }
+
+        if (headerParsed && trailingBuffer.length > AUTH_TAG_SIZE) {
+          const safeLength = trailingBuffer.length - AUTH_TAG_SIZE;
+          const decryptable = trailingBuffer.slice(0, safeLength);
+          trailingBuffer = trailingBuffer.slice(safeLength);
+          const decryptedChunk = decipher.update(decryptable);
+          if (decryptedChunk.length > 0) {
+            this.push(decryptedChunk);
+          }
         }
         callback();
       } catch (err) {
@@ -166,8 +211,21 @@ function createDecryptStream(key) {
     },
     flush(callback) {
       try {
-        if (decipher) {
-          this.push(decipher.final());
+        if (!decipher || trailingBuffer.length < AUTH_TAG_SIZE) {
+          throw new Error('文件加密数据不完整');
+        }
+        const ciphertext = trailingBuffer.slice(0, trailingBuffer.length - AUTH_TAG_SIZE);
+        const authTag = trailingBuffer.slice(trailingBuffer.length - AUTH_TAG_SIZE);
+        if (ciphertext.length > 0) {
+          const finalData = decipher.update(ciphertext);
+          if (finalData.length > 0) {
+            this.push(finalData);
+          }
+        }
+        decipher.setAuthTag(authTag);
+        const decryptedFinal = decipher.final();
+        if (decryptedFinal.length > 0) {
+          this.push(decryptedFinal);
         }
         callback();
       } catch (err) {
@@ -181,6 +239,7 @@ module.exports = {
   initEncryptionKey,
   encryptText,
   decryptText,
+  decryptFileBuffer,
   createEncryptStream,
   createDecryptStream
 };

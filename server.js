@@ -12,8 +12,7 @@ const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
-const { Readable } = require('stream');
-const { initEncryptionKey, encryptText, decryptText, createEncryptStream, createDecryptStream } = require('./crypto-utils');
+const { initEncryptionKey, encryptText, decryptText, decryptFileBuffer, createEncryptStream, createDecryptStream } = require('./crypto-utils');
 
 // ─────────────────────────────────────────────
 // 加载配置文件
@@ -231,8 +230,73 @@ io.use((socket, next) => {
 // ─────────────────────────────────────────────
 const MESSAGES_FILE = path.join(__dirname, 'data', 'messages.json');
 const FILES_DIR = path.join(__dirname, 'data', 'files');
+const UPLOAD_TMP_DIR = path.join(__dirname, 'data', 'upload-tmp');
 const EXPIRY_DAYS = 3;
 const fileMetaByStoredName = new Map();
+
+function ensureDir(dirPath) {
+  if (!fs.existsSync(dirPath)) {
+    fs.mkdirSync(dirPath, { recursive: true });
+  }
+}
+
+function cleanupFileSilently(filePath) {
+  if (!filePath) return;
+  try {
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+    }
+  } catch (_) {}
+}
+
+function streamEncryptedFileToResponse(fileLocation, res) {
+  const readStream = fs.createReadStream(fileLocation);
+  const decryptStream = createDecryptStream(ENCRYPTION_KEY);
+  let fallbackTriggered = false;
+
+  function fallbackToBufferDecrypt() {
+    if (fallbackTriggered) return;
+    fallbackTriggered = true;
+    readStream.destroy();
+    decryptStream.destroy();
+
+    fs.readFile(fileLocation, (readErr, encryptedBuffer) => {
+      if (readErr) {
+        if (!res.headersSent) {
+          res.status(500).json({ error: '文件读取失败' });
+        } else {
+          res.destroy(readErr);
+        }
+        return;
+      }
+      try {
+        const decryptedBuffer = decryptFileBuffer(encryptedBuffer, ENCRYPTION_KEY);
+        res.end(decryptedBuffer);
+      } catch (decryptErr) {
+        if (!res.headersSent) {
+          res.status(500).json({ error: '文件解密失败' });
+        } else {
+          res.destroy(decryptErr);
+        }
+      }
+    });
+  }
+
+  readStream.on('error', () => {
+    if (!res.headersSent) res.status(500).json({ error: '文件读取失败' });
+    else res.destroy();
+  });
+
+  decryptStream.on('error', () => {
+    if (!res.headersSent) {
+      fallbackToBufferDecrypt();
+    } else {
+      res.destroy();
+    }
+  });
+
+  readStream.pipe(decryptStream).pipe(res);
+}
 
 function loadMessages() {
   try {
@@ -317,7 +381,12 @@ function rebuildFileMetaMap() {
 // 中间件
 // ─────────────────────────────────────────────
 app.use(express.json({ limit: '10kb' }));
-app.use(fileUpload());
+ensureDir(UPLOAD_TMP_DIR);
+app.use(fileUpload({
+  useTempFiles: true,
+  tempFileDir: UPLOAD_TMP_DIR,
+  createParentPath: true
+}));
 app.use(express.static('public'));
 // /files 不再静态托管（已改为加密读取路由）
 
@@ -373,11 +442,7 @@ app.get('/download/:storedFileName', authMiddleware, (req, res) => {
   res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(originalFileName)}`);
   res.setHeader('Content-Type', 'application/octet-stream');
   res.setHeader('Cache-Control', 'private, no-cache');
-  const readStream = fs.createReadStream(fileLocation);
-  const decryptStream = createDecryptStream(ENCRYPTION_KEY);
-  readStream.on('error', () => { if (!res.headersSent) res.status(500).json({ error: '文件读取失败' }); });
-  decryptStream.on('error', () => { if (!res.headersSent) res.status(500).json({ error: '文件解密失败' }); else res.destroy(); });
-  readStream.pipe(decryptStream).pipe(res);
+  streamEncryptedFileToResponse(fileLocation, res);
 });
 
 // ─────────────────────────────────────────────
@@ -396,11 +461,7 @@ app.get('/files/:filename', authMiddleware, (req, res) => {
   const ext = path.extname(filename).toLowerCase();
   res.setHeader('Content-Type', imageMimes[ext] || 'application/octet-stream');
   res.setHeader('Cache-Control', 'private, no-cache');
-  const readStream = fs.createReadStream(fileLocation);
-  const decryptStream = createDecryptStream(ENCRYPTION_KEY);
-  readStream.on('error', () => { if (!res.headersSent) res.status(500).json({ error: '文件读取失败' }); });
-  decryptStream.on('error', () => { if (!res.headersSent) res.status(500).json({ error: '文件解密失败' }); else res.destroy(); });
-  readStream.pipe(decryptStream).pipe(res);
+  streamEncryptedFileToResponse(fileLocation, res);
 });
 
 // ─────────────────────────────────────────────
@@ -411,6 +472,9 @@ app.post('/upload', authMiddleware, (req, res) => {
     return res.status(400).json({ error: '没有文件被上传' });
   }
   const file = req.files.file;
+  if (!file || Array.isArray(file)) {
+    return res.status(400).json({ error: '仅支持单文件上传' });
+  }
   const originalFileName = decodeUploadedFileName(file.name);
   const extension = path.extname(originalFileName).toLowerCase() || path.extname(file.name).toLowerCase() || '';
 
@@ -421,28 +485,46 @@ app.post('/upload', authMiddleware, (req, res) => {
     });
   }
 
-  if (!fs.existsSync(FILES_DIR)) fs.mkdirSync(FILES_DIR, { recursive: true });
+  if (!file.tempFilePath) {
+    return res.status(500).json({ error: '上传临时文件创建失败' });
+  }
+
+  ensureDir(FILES_DIR);
 
   const storedFileName = `${Date.now()}-${crypto.randomBytes(4).toString('hex')}${extension}`;
   const filePath = path.join(FILES_DIR, storedFileName);
-
-  const readable = new Readable();
-  readable._read = () => {};
-  readable.push(file.data);
-  readable.push(null);
-
+  const tempFilePath = file.tempFilePath;
+  const readStream = fs.createReadStream(tempFilePath);
   const encryptStream = createEncryptStream(ENCRYPTION_KEY);
   const writeStream = fs.createWriteStream(filePath);
+  let settled = false;
 
+  function finishWithError(statusCode, message, err) {
+    if (settled) return;
+    settled = true;
+    if (err) {
+      console.error(`[上传] ${message}:`, err);
+    }
+    cleanupFileSilently(filePath);
+    cleanupFileSilently(tempFilePath);
+    if (!res.headersSent) {
+      res.status(statusCode).json({ error: message });
+    }
+  }
+
+  readStream.on('error', (err) => {
+    finishWithError(500, '读取上传临时文件失败', err);
+  });
   encryptStream.on('error', (err) => {
-    console.error('[上传] 加密出错:', err);
-    if (!res.headersSent) res.status(500).json({ error: '文件加密失败' });
+    finishWithError(500, '文件加密失败', err);
   });
   writeStream.on('error', (err) => {
-    console.error('[上传] 写入出错:', err);
-    if (!res.headersSent) res.status(500).json({ error: '文件保存失败' });
+    finishWithError(500, '文件保存失败', err);
   });
   writeStream.on('finish', () => {
+    if (settled) return;
+    settled = true;
+    cleanupFileSilently(tempFilePath);
     res.json({
       fileName: originalFileName,
       storedFileName,
@@ -452,7 +534,7 @@ app.post('/upload', authMiddleware, (req, res) => {
     });
   });
 
-  readable.pipe(encryptStream).pipe(writeStream);
+  readStream.pipe(encryptStream).pipe(writeStream);
 });
 
 // ─────────────────────────────────────────────
